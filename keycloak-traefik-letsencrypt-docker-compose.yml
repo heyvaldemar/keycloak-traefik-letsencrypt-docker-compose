@@ -30,6 +30,12 @@ services:
       POSTGRES_USER: keycloakdbuser
       # Database password (replace with yours)
       POSTGRES_PASSWORD: EqhvLbsPhrkkZjcaGWcV7qT
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
   keycloak:
@@ -73,8 +79,10 @@ services:
       - "traefik.http.middlewares.compresstraefik.compress=true"
     restart: unless-stopped
     depends_on:
-      - postgres
-      - traefik
+      postgres:
+        condition: service_healthy
+      traefik:
+        condition: service_healthy
 
   traefik:
     # Image tag (replace with yours)
@@ -161,5 +169,7 @@ services:
       POSTGRES_PASSWORD: EqhvLbsPhrkkZjcaGWcV7qT
     restart: unless-stopped
     depends_on:
-      - postgres
-      - keycloak
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
