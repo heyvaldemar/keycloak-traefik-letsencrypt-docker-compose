@@ -20,7 +20,7 @@ volumes:
 services:
   postgres:
     # Image tag (replace with yours)
-    image: postgres:13.2
+    image: postgres:14
     volumes:
       - keycloak-postgres:/var/lib/postgresql/data
     environment:
@@ -40,7 +40,7 @@ services:
 
   keycloak:
     # Image tag (replace with yours)
-    image: jboss/keycloak:13.0.0
+    image: jboss/keycloak:16.1.1
     environment:
       DB_VENDOR: postgres
       DB_ADDR: postgres
@@ -86,7 +86,7 @@ services:
 
   traefik:
     # Image tag (replace with yours)
-    image: traefik:2.4
+    image: traefik:2.8
     command:
       - "--log.level=WARN"
       - "--accesslog=true"
@@ -143,7 +143,7 @@ services:
 
   backups:
     # Image tag (replace with yours)
-    image: postgres:13.2
+    image: postgres:14
     # Database backups prune interval (replace with yours). Default is 7 days.
     # find /srv/keycloak-postgres/backups -type f -mtime +7 | xargs rm -f
 
