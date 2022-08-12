@@ -6,7 +6,7 @@ Run `keycloak-restore-database.sh` to restore database if needed.
 
 Deploy Keycloak server with a Docker Compose using the command:
 
-`docker-compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d`
+`docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d`
 
 Detailed installation guide can be found on my [website](https://www.heyvaldemar.com/install-keycloak-with-docker-compose/).
 
