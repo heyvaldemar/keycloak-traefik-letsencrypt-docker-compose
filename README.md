@@ -33,3 +33,8 @@ hey, I’m Vladimir Mikhalev, but my friends call me Valdemar.
 🥤 Support on [BuyMeaCoffee](https://www.buymeacoffee.com/heyValdemar)\
 🍪 Support on [Ko-fi](https://ko-fi.com/heyValdemar)\
 💖 Support on [PayPal](https://www.paypal.com/paypalme/heyValdemarCOM)
+
+
+### Infrastructure model
+
+![Infrastructure model](.infragenie/infrastructure_model.png)
