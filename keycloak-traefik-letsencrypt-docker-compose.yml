@@ -52,7 +52,7 @@ services:
       # Database password (replace with yours)
       POSTGRES_PASSWORD: EqhvLbsPhrkkZjcaGWcV7qT
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
+      test: ["CMD-SHELL", "pg_isready -U keycloakdbuser -d keycloakdb -h 127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 3
