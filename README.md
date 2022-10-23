@@ -26,8 +26,7 @@ hey, I’m Vladimir Mikhalev, but my friends call me Valdemar.
 🐈 Follow me on [GitHub](https://github.com/heyvaldemar)
 
 # Communication
-👾 Chat with IT pros on [Discord](https://discord.com/invite/D7fGMYjdR9)\
-🚀 Chat with IT pros on [Telegram](https://t.me/heyValdemarCOMchat)\
+👾 Chat with IT pros on [Discord](https://discord.gg/AJQGCCBcqf)\
 📧 Reach me at ask@sre.gg
 
 # Give Thanks
