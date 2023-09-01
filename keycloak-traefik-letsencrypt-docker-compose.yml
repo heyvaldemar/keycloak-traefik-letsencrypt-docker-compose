@@ -1,12 +1,49 @@
-# Keycloak with Let's Encrypt in a Docker Compose
+# Keycloak with Let's Encrypt Using Docker Compose
+
+# The complete installation guide is available on my https://www.heyvaldemar.com/install-keycloak-using-docker-compose/
+
+# Change variables in the `.env` to meet your requirements.
+# Note that the `.env` file should be in the same directory as `keycloak-traefik-letsencrypt-docker-compose.yml`.
+
+# Create networks for your services before deploying the configuration using the commands:
+# `docker network create traefik-network`
+# `docker network create keycloak-network`
+
+# Deploy Keycloak using Docker Compose:
+# `docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d`
+
+# Backups
+# The `backups` container in the configuration is responsible for the following:
+# 1. **Database Backup**: Creates compressed backups of the PostgreSQL database using pg_dump.
+# Customizable backup path, filename pattern, and schedule through variables like `POSTGRES_BACKUPS_PATH`, `POSTGRES_BACKUP_NAME`, and `BACKUP_INTERVAL`.
+# 2. **Backup Pruning**: Periodically removes backups exceeding a specified age to manage storage.
+# Customizable pruning schedule and age threshold with `POSTGRES_BACKUP_PRUNE_DAYS` and `DATA_BACKUP_PRUNE_DAYS`.
+# By utilizing this container, consistent and automated backups of the essential components of your instance are ensured.
+# Moreover, efficient management of backup storage and tailored backup routines can be achieved through easy and flexible configuration using environment variables.
+
+# # keycloak-restore-database.sh Description
+# This script facilitates the restoration of a database backup:
+# 1. **Identify Containers**: It first identifies the service and backups containers by name, finding the appropriate container IDs.
+# 2. **List Backups**: Displays all available database backups located at the specified backup path.
+# 3. **Select Backup**: Prompts the user to copy and paste the desired backup name from the list to restore the database.
+# 4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
+# 5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
+# 6. **Start Service**: Restarts the service after the restoration is completed.
+# To make the `keycloak-restore-database.shh` script executable, run the following command:
+# `chmod +x keycloak-restore-database.sh`
+# Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
 # Author
-# hey, I’m Vladimir Mikhalev, but my friends call me Valdemar.
+# I’m Vladimir Mikhalev, the Docker Captain, but my friends can call me Valdemar.
+# https://www.docker.com/captains/vladimir-mikhalev/
 
 # My website with detailed IT guides: https://www.heyvaldemar.com/
 # Follow me on YouTube: https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1
 # Follow me on Twitter: https://twitter.com/heyValdemar
 # Follow me on Instagram: https://www.instagram.com/heyvaldemar/
+# Follow me on Threads: https://www.threads.net/@heyvaldemar
+# Follow me on Mastodon: https://hachyderm.io/@heyValdemar
+# Follow me on Bluesky: https://bsky.app/profile/heyvaldemar.bsky.social
 # Follow me on Facebook: https://www.facebook.com/heyValdemarFB/
 # Follow me on TikTok: https://www.tiktok.com/@heyvaldemar
 # Follow me on LinkedIn: https://www.linkedin.com/in/heyvaldemar/
@@ -23,35 +60,31 @@
 # Support on Ko-fi: https://ko-fi.com/heyValdemar
 # Support on PayPal: https://www.paypal.com/paypalme/heyValdemarCOM
 
-# Install Docker Engine and Docker Compose by following my guide: https://www.heyvaldemar.com/install-docker-engine-and-docker-compose-on-ubuntu-server/
-
-# Run keycloak-restore-database.sh to restore database if needed.
-
-# Deploy Keycloak server with a Docker Compose using the command:
-# docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d
-
-# Detailed installation guide can be found on my website: https://www.heyvaldemar.com/install-keycloak-with-docker-compose/
+networks:
+  keycloak-network:
+    external: true
+  traefik-network:
+    external: true
 
 volumes:
   keycloak-postgres:
-  keycloak-postgres-backups:
+  keycloak-postgres-backup:
+  keycloak-database-backups:
   traefik-certificates:
 
 services:
-  postgres:
-    # Image tag (replace with yours)
-    image: postgres:14
+  postgres-keycloak:
+    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
     volumes:
       - keycloak-postgres:/var/lib/postgresql/data
     environment:
-      # Database name (replace with yours)
-      POSTGRES_DB: keycloakdb
-      # Database user (replace with yours)
-      POSTGRES_USER: keycloakdbuser
-      # Database password (replace with yours)
-      POSTGRES_PASSWORD: EqhvLbsPhrkkZjcaGWcV7qT
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    networks:
+      - keycloak-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloakdbuser -d keycloakdb -h 127.0.0.1"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -59,36 +92,31 @@ services:
     restart: unless-stopped
 
   keycloak:
-    # Image tag (replace with yours)
-    image: jboss/keycloak:16.1.1
+    image: ${KEYCLOAK_IMAGE_TAG}
+    command: start
     environment:
-      DB_VENDOR: postgres
-      DB_ADDR: postgres
-      DB_PORT: 5432
-      # Database name (replace with yours)
-      DB_DATABASE: keycloakdb
-      # Database user (replace with yours)
-      DB_USER: keycloakdbuser
-      # Database password (replace with yours)
-      DB_PASSWORD: EqhvLbsPhrkkZjcaGWcV7qT
-      # Keycloak user (replace with yours)
-      KEYCLOAK_USER: keycloakadmin
-      # Keycloak password (replace with yours)
-      KEYCLOAK_PASSWORD: rwXPqspCABJzqh47i723wf9
-      JGROUPS_DISCOVERY_PROTOCOL: JDBC_PING
-      JGROUPS_DISCOVERY_PROPERTIES: datasource_jndi_name=java:jboss/datasources/KeycloakDS,info_writer_sleep_time=500,initialize_sql="CREATE TABLE IF NOT EXISTS JGROUPSPING ( own_addr varchar(200) NOT NULL, cluster_name varchar(200) NOT NULL, created timestamp default current_timestamp, ping_data BYTEA, constraint PK_JGROUPSPING PRIMARY KEY (own_addr, cluster_name))"
-      PROXY_ADDRESS_FORWARDING: 'true'
-      KEYCLOAK_LOGLEVEL: WARN
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 240s
+      KC_DB: ${KEYCLOAK_DB_TYPE}
+      KC_DB_URL_HOST: postgres-keycloak
+      KC_DB_URL_PORT: 5432
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_DB_SCHEMA: public
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
+      KC_PROXY: edge
+      KC_PROXY_ADDRESS_FORWARDING: 'true'
+      KC_HTTP_ENABLED: 'true'
+      KC_HEALTH_ENABLED: 'true'
+      KC_METRICS_ENABLED: 'true'
+      KEYCLOAK_LOGLEVEL: ${KEYCLOAK_LOG_LEVEL}
+    networks:
+      - keycloak-network
+      - traefik-network
     labels:
       - "traefik.enable=true"
-      # Keycloak URL (replace with yours)
-      - "traefik.http.routers.keycloak.rule=Host(`keycloak.heyvaldemar.net`)"
+      - "traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_HOSTNAME}`)"
       - "traefik.http.routers.keycloak.service=keycloak"
       - "traefik.http.routers.keycloak.entrypoints=websecure"
       - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
@@ -97,18 +125,16 @@ services:
       - "traefik.http.services.keycloak.loadbalancer.passhostheader=true"
       - "traefik.http.routers.keycloak.middlewares=compresstraefik"
       - "traefik.http.middlewares.compresstraefik.compress=true"
+      - "traefik.docker.network=traefik-network"
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      traefik:
+      postgres-keycloak:
         condition: service_healthy
 
   traefik:
-    # Image tag (replace with yours)
-    image: traefik:2.8
+    image: ${TRAEFIK_IMAGE_TAG}
     command:
-      - "--log.level=WARN"
+      - "--log.level=${TRAEFIK_LOG_LEVEL}"
       - "--accesslog=true"
       - "--api.dashboard=true"
       - "--api.insecure=true"
@@ -121,8 +147,7 @@ services:
       - "--providers.docker.endpoint=unix:///var/run/docker.sock"
       - "--providers.docker.exposedByDefault=false"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      # Email for Let's Encrypt (replace with yours)
-      - "--certificatesresolvers.letsencrypt.acme.email=callvaldemar@gmail.com"
+      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json"
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
@@ -131,6 +156,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - traefik-certificates:/etc/traefik/acme
+    networks:
+      - traefik-network
     ports:
       - "80:80"
       - "443:443"
@@ -142,8 +169,7 @@ services:
       start_period: 5s
     labels:
       - "traefik.enable=true"
-      # Traefik URL (replace with yours)
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.keycloak.heyvaldemar.net`)"
+      - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_HOSTNAME}`)"
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
@@ -151,45 +177,36 @@ services:
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.services.dashboard.loadbalancer.passhostheader=true"
       - "traefik.http.routers.dashboard.middlewares=authtraefik"
-      # Basic Authentication for Traefik Dashboard
-      # Username: traefikadmin (replace with yours)
-      # Passwords must be encoded using MD5, SHA1, or BCrypt https://hostingcanada.org/htpasswd-generator/
-      - "traefik.http.middlewares.authtraefik.basicauth.users=traefikadmin:$$2y$$10$$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO"
+      - "traefik.http.middlewares.authtraefik.basicauth.users=${TRAEFIK_BASIC_AUTH}"
       - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
       - "traefik.http.routers.http-catchall.entrypoints=web"
       - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
     restart: unless-stopped
 
-  backups:
-    # Image tag (replace with yours)
-    image: postgres:14
-    # Database backups prune interval (replace with yours). Default is 7 days.
-    # find /srv/keycloak-postgres/backups -type f -mtime +7 | xargs rm -f
-
-    # Keycloak backups interval (replace with yours). Default is 1 day.
-    # sleep 24h
-
-    # Run keycloak-restore-database.sh to restore database if needed.
-    command: sh -c 'sleep 30m
-             && while true; do
-             PGPASSWORD="$$(echo $$POSTGRES_PASSWORD)"
-             pg_dump
-             -h postgres
-             -p 5432
-             -d keycloakdb
-             -U keycloakdbuser | gzip > /srv/keycloak-postgres/backups/keycloak-postgres-backup-$$(date "+%Y-%m-%d_%H-%M").gz
-             && find /srv/keycloak-postgres/backups -type f -mtime +7 | xargs rm -f;
-             sleep 24h; done'
+  backups-keycloak:
+    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+    command: >-
+      sh -c 'sleep $KEYCLOAK_BACKUP_INIT_SLEEP &&
+      while true; do
+        pg_dump -h postgres-keycloak -p 5432 -d $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER | gzip > $KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
+        find $KEYCLOAK_POSTGRES_BACKUPS_PATH -type f -mtime +$KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
+        sleep $KEYCLOAK_BACKUP_INTERVAL; done'
     volumes:
-      # Database backups location
-      - keycloak-postgres-backups:/srv/keycloak-postgres/backups
+      - keycloak-postgres-backup:/var/lib/postgresql/data
+      - keycloak-database-backups:${KEYCLOAK_POSTGRES_BACKUPS_PATH}
     environment:
-      # Database password (replace with yours)
-      POSTGRES_PASSWORD: EqhvLbsPhrkkZjcaGWcV7qT
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
+      PGPASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KEYCLOAK_BACKUP_INIT_SLEEP: ${KEYCLOAK_BACKUP_INIT_SLEEP}
+      KEYCLOAK_BACKUP_INTERVAL: ${KEYCLOAK_BACKUP_INTERVAL}
+      KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS: ${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}
+      KEYCLOAK_POSTGRES_BACKUPS_PATH: ${KEYCLOAK_POSTGRES_BACKUPS_PATH}
+      KEYCLOAK_POSTGRES_BACKUP_NAME: ${KEYCLOAK_POSTGRES_BACKUP_NAME}
+    networks:
+      - keycloak-network
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      keycloak:
+      postgres-keycloak:
         condition: service_healthy
