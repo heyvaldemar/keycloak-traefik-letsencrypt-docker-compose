@@ -73,7 +73,7 @@ volumes:
   traefik-certificates:
 
 services:
-  postgres-keycloak:
+  postgres:
     image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
     volumes:
       - keycloak-postgres:/var/lib/postgresql/data
@@ -84,36 +84,39 @@ services:
     networks:
       - keycloak-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1"]
+      test: [ "CMD", "pg_isready", "-q", "-d", "${KEYCLOAK_DB_NAME}", "-U", "${KEYCLOAK_DB_USER}" ]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 60s
-    restart: unless-stopped
 
   keycloak:
     image: ${KEYCLOAK_IMAGE_TAG}
-    command: start
     environment:
-      KC_DB: ${KEYCLOAK_DB_TYPE}
-      KC_DB_URL_HOST: postgres-keycloak
-      KC_DB_URL_PORT: 5432
-      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
-      KC_DB_SCHEMA: public
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
+      KEYCLOAK_DATABASE_VENDOR: ${KEYCLOAK_DB_TYPE}
+      KEYCLOAK_DATABASE_HOST: postgres
+      KEYCLOAK_DATABASE_PORT: 5432
+      KEYCLOAK_DATABASE_NAME: ${KEYCLOAK_DB_NAME}
+      KEYCLOAK_DATABASE_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DATABASE_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KEYCLOAK_DATABASE_SCHEMA: public
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USERNAME}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_ENABLE_HEALTH_ENDPOINTS: 'true'
+      KEYCLOAK_ENABLE_STATISTICS: 'true'
       KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
       KC_PROXY: edge
       KC_PROXY_ADDRESS_FORWARDING: 'true'
       KC_HTTP_ENABLED: 'true'
-      KC_HEALTH_ENABLED: 'true'
-      KC_METRICS_ENABLED: 'true'
-      KEYCLOAK_LOGLEVEL: ${KEYCLOAK_LOG_LEVEL}
     networks:
       - keycloak-network
       - traefik-network
+    healthcheck:
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_HOSTNAME}`)"
@@ -128,7 +131,7 @@ services:
       - "traefik.docker.network=traefik-network"
     restart: unless-stopped
     depends_on:
-      postgres-keycloak:
+      postgres:
         condition: service_healthy
 
   traefik:
@@ -184,12 +187,12 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
     restart: unless-stopped
 
-  backups-keycloak:
+  backups:
     image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
     command: >-
       sh -c 'sleep $KEYCLOAK_BACKUP_INIT_SLEEP &&
       while true; do
-        pg_dump -h postgres-keycloak -p 5432 -d $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER | gzip > $KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
+        pg_dump -h postgres -p 5432 -d $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER | gzip > $KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
         find $KEYCLOAK_POSTGRES_BACKUPS_PATH -type f -mtime +$KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
         sleep $KEYCLOAK_BACKUP_INTERVAL; done'
     volumes:
@@ -208,5 +211,5 @@ services:
       - keycloak-network
     restart: unless-stopped
     depends_on:
-      postgres-keycloak:
+      postgres:
         condition: service_healthy
