@@ -89,6 +89,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+    restart: unless-stopped
 
   keycloak:
     image: ${KEYCLOAK_IMAGE_TAG}
