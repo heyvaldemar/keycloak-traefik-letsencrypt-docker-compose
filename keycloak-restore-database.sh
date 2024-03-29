@@ -13,7 +13,7 @@
 # Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
 KEYCLOAK_CONTAINER=$(docker ps -aqf "name=keycloak-keycloak")
-KEYCLOAK_BACKUPS_CONTAINER=$(docker ps -aqf "name=keycloak-backups-keycloak")
+KEYCLOAK_BACKUPS_CONTAINER=$(docker ps -aqf "name=keycloak-backups")
 KEYCLOAK_DB_NAME="keycloakdb"
 KEYCLOAK_DB_USER="keycloakdbuser"
 POSTGRES_PASSWORD=$(docker exec $KEYCLOAK_BACKUPS_CONTAINER printenv PGPASSWORD)
@@ -38,9 +38,9 @@ echo "--> Stopping service..."
 docker stop "$KEYCLOAK_CONTAINER"
 
 echo "--> Restoring database..."
-docker exec "$KEYCLOAK_BACKUPS_CONTAINER" sh -c "dropdb -h postgres-keycloak -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER \
-&& createdb -h postgres-keycloak -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER \
-&& gunzip -c ${BACKUP_PATH}${SELECTED_DATABASE_BACKUP} | psql -h postgres-keycloak -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER"
+docker exec "$KEYCLOAK_BACKUPS_CONTAINER" sh -c "dropdb -h postgres -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER \
+&& createdb -h postgres -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER \
+&& gunzip -c ${BACKUP_PATH}${SELECTED_DATABASE_BACKUP} | psql -h postgres -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER"
 echo "--> Database recovery completed..."
 
 echo "--> Starting service..."
