@@ -94,8 +94,9 @@ services:
   keycloak:
     image: ${KEYCLOAK_IMAGE_TAG}
     environment:
+      KC_DB: postgres
       KC_DB_URL_HOST: postgres
-      KC_DB: ${KEYCLOAK_DB_NAME}
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
       KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
       KC_DB_SCHEMA: public
