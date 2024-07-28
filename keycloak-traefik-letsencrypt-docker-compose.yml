@@ -93,6 +93,7 @@ services:
 
   keycloak:
     image: ${KEYCLOAK_IMAGE_TAG}
+    command: start-dev
     environment:
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
