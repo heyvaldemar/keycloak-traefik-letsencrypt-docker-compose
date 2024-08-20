@@ -103,7 +103,7 @@ services:
       KC_DB_SCHEMA: public
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      KEYCLOAK_ENABLE_HEALTH_ENDPOINTS: 'true'
+      KC_HEALTH_ENABLED: 'true'
       KEYCLOAK_ENABLE_STATISTICS: 'true'
       KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
       KC_HTTP_ENABLED: 'true'
@@ -113,7 +113,12 @@ services:
       - keycloak-network
       - traefik-network
     healthcheck:
-      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+      test: 
+      - "CMD-SHELL"
+      - |
+        exec 3<>/dev/tcp/localhost/9000 &&
+        echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+        cat <&3 | tee /tmp/healthcheck.log | grep -q '200 OK'
       interval: 10s
       timeout: 5s
       retries: 3
