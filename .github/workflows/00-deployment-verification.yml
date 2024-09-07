@@ -1,0 +1,50 @@
+name: Deployment Verification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Create necessary Docker networks
+      run: |
+        docker network create keycloak-network || true
+        docker network create traefik-network || true
+
+    - name: Start up services using Docker Compose
+      run: docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml up -d
+
+    - name: Modify /etc/hosts for internal routing
+      run: |
+        echo "127.0.0.1 keycloak.heyvaldemar.net" | sudo tee -a /etc/hosts
+        echo "127.0.0.1 traefik.keycloak.heyvaldemar.net" | sudo tee -a /etc/hosts
+
+    - name: Print Docker Compose services status
+      run: docker ps
+
+    - name: Wait for the application to be ready via Traefik
+      run: |
+        echo "Checking the routing and availability of application via Traefik..."
+        timeout 5m bash -c 'while ! curl -fsSLk "https://keycloak.heyvaldemar.net"; do echo "Waiting for the application to be ready..."; sleep 10; done'
+
+    - name: Inspect Network Configuration
+      run: |
+        docker network inspect keycloak-network
+        docker network inspect traefik-network
+
+    - name: Shutdown Docker Compose services
+      if: always()
+      run: docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml down
