@@ -22,7 +22,7 @@ Deploy Keycloak using Docker Compose:
 
 `docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d`
 
-# Backups
+## Backups
 
 The `backups` container in the configuration is responsible for the following:
 
@@ -33,7 +33,7 @@ Customizable backup path, filename pattern, and schedule through variables like 
 
 By utilizing this container, consistent and automated backups of the essential components of your instance are ensured. Moreover, efficient management of backup storage and tailored backup routines can be achieved through easy and flexible configuration using environment variables.
 
-# keycloak-restore-database.sh Description
+## keycloak-restore-database.sh Description
 
 This script facilitates the restoration of a database backup:
 
@@ -55,31 +55,82 @@ To make the `keycloak-restore-database.shh` script executable, run the following
 
 Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
-# Author
+## Author
 
-I’m Vladimir Mikhalev, the [Docker Captain](https://www.docker.com/captains/vladimir-mikhalev/), but my friends can call me Valdemar.
+hey everyone,
 
-🌐 My [website](https://www.heyvaldemar.com/) with detailed IT guides\
-🎬 Follow me on [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1)\
-🐦 Follow me on [Twitter](https://twitter.com/heyValdemar)\
-🎨 Follow me on [Instagram](https://www.instagram.com/heyvaldemar/)\
-🧵 Follow me on [Threads](https://www.threads.net/@heyvaldemar)\
-🐘 Follow me on [Mastodon](https://mastodon.social/@heyvaldemar)\
-🧊 Follow me on [Bluesky](https://bsky.app/profile/heyvaldemar.bsky.social)\
-🎸 Follow me on [Facebook](https://www.facebook.com/heyValdemarFB/)\
-🎥 Follow me on [TikTok](https://www.tiktok.com/@heyvaldemar)\
-💻 Follow me on [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)\
-🐈 Follow me on [GitHub](https://github.com/heyvaldemar)
+💾 I’ve been in the IT game for over 20 years, cutting my teeth with some big names like [IBM](https://www.linkedin.com/in/heyvaldemar/), [Thales](https://www.linkedin.com/in/heyvaldemar/), and [Amazon](https://www.linkedin.com/in/heyvaldemar/). These days, I wear the hat of a DevOps Consultant and Team Lead, but what really gets me going is Docker and container technology - I’m kind of obsessed!
 
-# Communication
+💛 I have my own IT [blog](https://www.heyvaldemar.com/), where I’ve built a [community](https://discord.gg/AJQGCCBcqf) of DevOps enthusiasts who share my love for all things Docker, containers, and IT technologies in general. And to make sure everyone can jump on this awesome DevOps train, I write super detailed guides (seriously, they’re foolproof!) that help even newbies deploy and manage complex IT solutions.
 
-👾 Chat with IT pros on [Discord](https://discord.gg/AJQGCCBcqf)\
-📧 Reach me at ask@sre.gg
+🚀 My dream is to empower every single person in the DevOps community to squeeze every last drop of potential out of Docker and container tech.
 
-# Give Thanks
+🐳 As a [Docker Captain](https://www.docker.com/captains/vladimir-mikhalev/), I’m stoked to share my knowledge, experiences, and a good dose of passion for the tech. My aim is to encourage learning, innovation, and growth, and to inspire the next generation of IT whizz-kids to push Docker and container tech to its limits.
 
-💎 Support on [GitHub](https://github.com/sponsors/heyValdemar)\
-🏆 Support on [Patreon](https://www.patreon.com/heyValdemar)\
-🥤 Support on [BuyMeaCoffee](https://www.buymeacoffee.com/heyValdemar)\
-🍪 Support on [Ko-fi](https://ko-fi.com/heyValdemar)\
-💖 Support on [PayPal](https://www.paypal.com/paypalme/heyValdemarCOM)
+Let’s do this together!
+
+## My 2D Portfolio
+
+🕹️ Click into [sre.gg](https://www.sre.gg/) — my virtual space is a 2D pixel-art portfolio inviting you to interact with elements that encapsulate the milestones of my DevOps career.
+
+## My Courses
+
+🎓 Dive into my [comprehensive IT courses](https://www.heyvaldemar.com/courses/) designed for enthusiasts and professionals alike. Whether you're looking to master Docker, conquer Kubernetes, or advance your DevOps skills, my courses provide a structured pathway to enhancing your technical prowess.
+
+🔑 [Each course](https://www.udemy.com/user/heyvaldemar/) is built from the ground up with real-world scenarios in mind, ensuring that you gain practical knowledge and hands-on experience. From beginners to seasoned professionals, there's something here for everyone to elevate their IT skills.
+
+## My Services
+
+💼 Take a look at my [service catalog](https://www.heyvaldemar.com/services/) and find out how we can make your technological life better. Whether it's increasing the efficiency of your IT infrastructure, advancing your career, or expanding your technological horizons — I'm here to help you achieve your goals. From DevOps transformations to building gaming computers — let's make your technology unparalleled!
+
+## Patreon Exclusives
+
+🏆 Join my [Patreon](https://www.patreon.com/heyvaldemar) and dive deep into the world of Docker and DevOps with exclusive content tailored for IT enthusiasts and professionals. As your experienced guide, I offer a range of membership tiers designed to suit everyone from newbies to IT experts.
+
+## My Recommendations
+
+📕 Check out my collection of [essential DevOps books](https://kit.co/heyvaldemar/essential-devops-books)\
+🖥️ Check out my [studio streaming and recording kit](https://kit.co/heyvaldemar/my-studio-streaming-and-recording-kit)\
+📡 Check out my [streaming starter kit](https://kit.co/heyvaldemar/streaming-starter-kit)
+
+## Follow Me
+
+🎬 [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1)\
+🐦 [X / Twitter](https://twitter.com/heyvaldemar)\
+🎨 [Instagram](https://www.instagram.com/heyvaldemar/)\
+🐘 [Mastodon](https://mastodon.social/@heyvaldemar)\
+🧵 [Threads](https://www.threads.net/@heyvaldemar)\
+🎸 [Facebook](https://www.facebook.com/heyvaldemarFB/)\
+🧊 [Bluesky](https://bsky.app/profile/heyvaldemar.bsky.social)\
+🎥 [TikTok](https://www.tiktok.com/@heyvaldemar)\
+💻 [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)\
+📣 [daily.dev Squad](https://app.daily.dev/squads/devopscompass)\
+🧩 [LeetCode](https://leetcode.com/u/heyvaldemar/)\
+🐈 [GitHub](https://github.com/heyvaldemar)
+
+## Community of IT Experts
+
+👾 [Discord](https://discord.gg/AJQGCCBcqf)
+
+## Refill My Coffee Supplies
+
+💖 [PayPal](https://www.paypal.com/paypalme/heyvaldemarCOM)\
+🏆 [Patreon](https://www.patreon.com/heyvaldemar)\
+💎 [GitHub](https://github.com/sponsors/heyvaldemar)\
+🥤 [BuyMeaCoffee](https://www.buymeacoffee.com/heyvaldemar)\
+🍪 [Ko-fi](https://ko-fi.com/heyvaldemar)
+
+🌟 **Bitcoin (BTC):** bc1q2fq0k2lvdythdrj4ep20metjwnjuf7wccpckxc\
+🔹 **Ethereum (ETH):** 0x76C936F9366Fad39769CA5285b0Af1d975adacB8\
+🪙 **Binance Coin (BNB):** bnb1xnn6gg63lr2dgufngfr0lkq39kz8qltjt2v2g6\
+💠 **Litecoin (LTC):** LMGrhx8Jsx73h1pWY9FE8GB46nBytjvz8g
+
+<div align="center">
+
+### Show some 💜 by starring some of the [repositories](https://github.com/heyValdemar?tab=repositories)!
+
+![octocat](https://user-images.githubusercontent.com/10498744/210113490-e2fad07f-4488-4da8-a656-b9abbdd8cb26.gif)
+
+</div>
+
+![footer](https://user-images.githubusercontent.com/10498744/210157572-1fca0242-8af2-46a6-bfa3-666ffd40ebde.svg)

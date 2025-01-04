@@ -12,39 +12,59 @@ jobs:
   deploy-and-test:
     runs-on: ubuntu-latest
 
+    env:
+      NETWORK_ONE: keycloak-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: keycloak-traefik-letsencrypt-docker-compose.yml
+      APP_HOSTNAME: keycloak.heyvaldemar.net
+      APP_TRAEFIK_HOSTNAME: traefik.keycloak.heyvaldemar.net
+      COMPOSE_PROJECT_NAME: keycloak
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Create necessary Docker networks
+        run: |
+          docker network create $NETWORK_ONE || true
+          docker network create $NETWORK_TWO || true
 
-    - name: Create necessary Docker networks
-      run: |
-        docker network create keycloak-network || true
-        docker network create traefik-network || true
+      - name: Start up services using Docker Compose
+        run: docker compose -f $DOCKER_COMPOSE_FILE -p $COMPOSE_PROJECT_NAME up -d
 
-    - name: Start up services using Docker Compose
-      run: docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml up -d
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
 
-    - name: Modify /etc/hosts for internal routing
-      run: |
-        echo "127.0.0.1 keycloak.heyvaldemar.net" | sudo tee -a /etc/hosts
-        echo "127.0.0.1 traefik.keycloak.heyvaldemar.net" | sudo tee -a /etc/hosts
+      - name: Print Docker Compose services status
+        run: docker ps
 
-    - name: Print Docker Compose services status
-      run: docker ps
+      - name: Wait for the application to be ready via Traefik
+        run: |
+          echo "Checking the routing and availability of the application via Traefik..."
+          timeout 5m bash -c 'while ! curl -fsSLk "https://$APP_HOSTNAME"; do \
+            echo "Waiting for the application to be ready..."; \
+            sleep 10; \
+          done'
 
-    - name: Wait for the application to be ready via Traefik
-      run: |
-        echo "Checking the routing and availability of application via Traefik..."
-        timeout 5m bash -c 'while ! curl -fsSLk "https://keycloak.heyvaldemar.net"; do echo "Waiting for the application to be ready..."; sleep 10; done'
+      - name: Wait for the Traefik dashboard to be ready
+        run: |
+          echo "Checking the routing and availability of the Traefik dashboard..."
+          timeout 5m bash -c 'while ! curl -fsSLk --write-out "%{http_code}" --output /dev/null "https://$APP_TRAEFIK_HOSTNAME" | grep -E "200|401"; do \
+            echo "Waiting for the application to be ready..."; \
+            sleep 10; \
+          done'
 
-    - name: Inspect Network Configuration
-      run: |
-        docker network inspect keycloak-network
-        docker network inspect traefik-network
+      - name: Inspect Network Configuration
+        run: |
+          docker network inspect $NETWORK_ONE
+          docker network inspect $NETWORK_TWO
 
-    - name: Shutdown Docker Compose services
-      if: always()
-      run: docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml down
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f $DOCKER_COMPOSE_FILE -p $COMPOSE_PROJECT_NAME logs
+
+      - name: Shutdown Docker Compose services
+        if: always()
+        run: docker compose -f $DOCKER_COMPOSE_FILE -p $COMPOSE_PROJECT_NAME down
