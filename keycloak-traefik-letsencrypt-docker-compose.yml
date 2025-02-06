@@ -93,7 +93,7 @@ services:
     command:
       # Set the log level (DEBUG, INFO, WARN, ERROR)
       - "--log.level=${TRAEFIK_LOG_LEVEL}"
-      # Enable the built-in API and web-based dashboard on /dashboard
+      # Enable the built-in API and web-based dashboard
       - "--api.dashboard=true"
       # Enable the /ping endpoint so we can health-check Traefik
       - "--ping=true"
@@ -140,7 +140,7 @@ services:
       retries: 3
       start_period: 5s
     labels:
-      # Enable Traefik for this container.
+      # Enable Traefik for this container
       - "traefik.enable=true"
       # A router to expose the Traefik dashboard
       - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_HOSTNAME}`)"
@@ -148,7 +148,7 @@ services:
       - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard.service=api@internal"
-      # asic Authentication for the Traefik dashboard
+      # Basic Authentication for the Traefik dashboard
       - "traefik.http.routers.dashboard.middlewares=authtraefik"
       - "traefik.http.middlewares.authtraefik.basicauth.users=${TRAEFIK_BASIC_AUTH}"
       # Specify the internal server port to the dashboard service
