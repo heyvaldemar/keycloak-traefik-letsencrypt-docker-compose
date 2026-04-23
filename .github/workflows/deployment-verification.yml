@@ -50,13 +50,13 @@ jobs:
         # `docker compose up` succeeds without committing secrets to the repo.
         run: |
           cat > .env <<EOF
-          TRAEFIK_IMAGE_TAG=traefik:3.2
+          TRAEFIK_IMAGE_TAG=traefik:3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9
           TRAEFIK_LOG_LEVEL=WARN
           TRAEFIK_ACME_EMAIL=ci@example.com
           TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
           TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
-          KEYCLOAK_POSTGRES_IMAGE_TAG=postgres:16
-          KEYCLOAK_IMAGE_TAG=quay.io/keycloak/keycloak:26.2.5
+          KEYCLOAK_POSTGRES_IMAGE_TAG=postgres:16@sha256:71e27bf60b70bded003791b5573f8b808365613f341df20ffcf0c1ed7bc13ddf
+          KEYCLOAK_IMAGE_TAG=quay.io/keycloak/keycloak:26.2.5@sha256:4883630ef9db14031cde3e60700c9a9a8eaf1b5c24db1589d6a2d43de38ba2a9
           KEYCLOAK_DB_NAME=keycloakdb
           KEYCLOAK_DB_USER=keycloakdbuser
           KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
