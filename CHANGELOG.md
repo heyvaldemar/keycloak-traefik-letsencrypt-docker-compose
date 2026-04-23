@@ -13,7 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CHANGELOG.md` — this file, Keep-a-Changelog format.
 
 ### Changed
+- Upstream images pinned by `sha256` digest in addition to tag in `.env.example`
+  and the CI ephemeral `.env`. Three images are pinned:
+  - `traefik:3.2@sha256:e561a37f…`
+  - `postgres:16@sha256:71e27bf6…`
+  - `quay.io/keycloak/keycloak:26.2.5@sha256:4883630e…`
+  Docker compose now pulls the exact digest; silent upstream repushes cannot
+  alter a given deployment. Dependabot's `docker` ecosystem (added in this
+  release) auto-opens weekly PRs when upstream digests change.
 - Dependabot gained a `docker` ecosystem to track upstream image digest bumps weekly, alongside the existing `github-actions` ecosystem. Both ecosystems now group minor/patch bumps into a single PR per week; major bumps continue to open individual PRs.
+- GitHub Actions pinned by commit SHA instead of floating `@vN` tag — currently
+  one action (`actions/checkout@de0fac2e…` # v6) in the deployment-verification
+  workflow. Dependabot's `github-actions` ecosystem keeps the pin fresh.
+- Deployment verification workflow hardened: explicit `permissions: contents: read`,
+  `timeout-minutes: 15`, `concurrency` group keyed per-ref, weekly cron
+  (`0 6 * * 1`) for upstream image drift detection, and `workflow_dispatch`
+  trigger for manual runs. Workflow file renamed `00-deployment-verification.yml`
+  → `deployment-verification.yml`.
 
 ### Removed
 - `.github/FUNDING.yml` — sponsor discovery moves to heyvaldemar.com. Aligns with the same decision applied across other heyvaldemar public repositories.
