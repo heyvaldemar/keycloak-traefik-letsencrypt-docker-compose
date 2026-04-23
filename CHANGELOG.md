@@ -23,6 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CHANGELOG.md` — this file, Keep-a-Changelog format.
 
 ### Changed
+- Deployment-verification workflow gained two new jobs:
+  - **`lint`** — runs `shellcheck` (via `koalaman/shellcheck-alpine:stable`) on
+    every `*.sh` in the repo root, and `actionlint` (via
+    `rhysd/actionlint:1.7.12`) on every workflow YAML. Blocks `deploy-and-test`
+    via `needs: lint` so CI fails fast on typos and footguns before burning
+    the 15-minute compose-up slot.
+  - **`scan-trivy`** — matrix job scanning each pinned upstream image
+    (`postgres:16@sha256:…`, `traefik:3.2@sha256:…`,
+    `quay.io/keycloak/keycloak:26.2.5@sha256:…`) for CRITICAL/HIGH fixable
+    CVEs via `aquasecurity/trivy-action@v0.35.0`, uploading per-image SARIF
+    to the GitHub Security tab under categories `trivy-postgres`,
+    `trivy-traefik`, `trivy-keycloak`. Runs parallel to `deploy-and-test`
+    with `continue-on-error: true` — findings don't block deployment but
+    surface for triage via Dependabot digest bumps.
+- Resolved pre-existing shellcheck warnings (SC2034, SC2086, SC2162) in
+  `keycloak-restore-database.sh`; fixed the README `server.cfg` leftover
+  phrasing. Both shipped in PR #18.
 - README rewritten for evaluator-first audience. Replaces the prior affiliate-and-socials-heavy footer with a focused technical structure: badges, table of contents, "Why this stack?" comparison table vs manual install / Helm / other compose examples, Getting started quickstart, Features + Typical use cases, Supply chain trust, Production checklist (7-item deployment-readiness check), preserved Backups and Restore sections, Security Notes, compact maintainer footer (YouTube · Blog · LinkedIn). Removes: first-person bio, "My Courses", "My Services", Patreon tiers, affiliate kit.co links, crypto wallet addresses, Discord invite, octocat gif, footer SVG.
 - Upstream images pinned by `sha256` digest in addition to tag in `.env.example`
   and the CI ephemeral `.env`. Three images are pinned:
