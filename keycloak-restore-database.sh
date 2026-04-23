@@ -8,7 +8,7 @@
 # 4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
 # 5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
 # 6. **Start Service**: Restarts the service after the restoration is completed.
-# To make the `keycloak-restore-database.shh` script executable, run the following command:
+# To make the `keycloak-restore-database.sh` script executable, run the following command:
 # `chmod +x keycloak-restore-database.sh`
 # Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
@@ -16,8 +16,10 @@ KEYCLOAK_CONTAINER=$(docker ps -aqf "name=keycloak-keycloak")
 KEYCLOAK_BACKUPS_CONTAINER=$(docker ps -aqf "name=keycloak-backups")
 KEYCLOAK_DB_NAME="keycloakdb"
 KEYCLOAK_DB_USER="keycloakdbuser"
-POSTGRES_PASSWORD=$(docker exec $KEYCLOAK_BACKUPS_CONTAINER printenv PGPASSWORD)
 BACKUP_PATH="/srv/keycloak-postgres/backups/"
+
+# Note: PGPASSWORD is read from the backups container's environment at exec
+# time (psql inherits it inside `docker exec`). No need to surface it here.
 
 echo "--> All available database backups:"
 
@@ -30,7 +32,7 @@ echo "--> Copy and paste the backup name from the list above to restore database
 --> Example: keycloak-postgres-backup-YYYY-MM-DD_hh-mm.gz"
 echo -n "--> "
 
-read SELECTED_DATABASE_BACKUP
+read -r SELECTED_DATABASE_BACKUP
 
 echo "--> $SELECTED_DATABASE_BACKUP was selected"
 
