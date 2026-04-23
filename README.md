@@ -1,138 +1,167 @@
-# Keycloak with Let's Encrypt Using Docker Compose
+# Keycloak + Traefik + Let's Encrypt — Docker Compose
 
 [![Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-The badge displayed on my repository indicates the status of the deployment verification workflow as executed on the latest commit to the main branch.
+## Contents
 
-**Passing**: This means the most recent commit has successfully passed all deployment checks, confirming that the Docker Compose setup functions correctly as designed.
+- [Why this stack?](#why-this-stack)
+- [Getting started](#getting-started)
+- [Features](#features)
+  - [Typical use cases](#typical-use-cases)
+- [Supply chain trust](#supply-chain-trust)
+- [Production checklist](#production-checklist)
+- [Backups](#backups)
+- [Restoring a database backup](#restoring-a-database-backup)
+- [Security Notes](#security-notes)
+- [About the maintainer](#about-the-maintainer)
 
-📙 The complete installation guide is available on my [website](https://www.heyvaldemar.com/install-keycloak-using-docker-compose/).
+This repository deploys **Keycloak** behind **Traefik** with automatic **Let's Encrypt TLS**, backed by **PostgreSQL**, with a scheduled **backup container** and a companion **restore script**. One `docker compose up` away from a production-shaped identity-and-access-management service at `https://your-domain`.
 
-❗ Copy `.env.example` to `.env` and fill in `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, and `TRAEFIK_BASIC_AUTH` (required) plus any other variables before first start.
+📙 Full narrative installation guide on the blog: [heyvaldemar.com/install-keycloak-using-docker-compose/](https://www.heyvaldemar.com/install-keycloak-using-docker-compose/).
 
-💡 `.env` must sit in the same directory as `keycloak-traefik-letsencrypt-docker-compose.yml`.
+## Why this stack?
 
-> ⚠️ **Security advisory.** Before this change, `.env` shipped with hardcoded credentials (`KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, and a `TRAEFIK_BASIC_AUTH` BCrypt hash) in git history. Anyone who deployed using the committed defaults should rotate those credentials immediately. The file is now gitignored and `.env.example` documents a secure `cp` + edit workflow.
+| Need | This stack | Manual install | Keycloak Helm (K8s) | Other compose examples |
+|------|-----------|----------------|---------------------|------------------------|
+| Ready to deploy in <10 min | ✅ | ❌ hours of setup | ✅ if K8s is already running | Often |
+| TLS via Let's Encrypt, auto-renewed | ✅ Traefik ACME built-in | Manual certbot | Via cert-manager | Varies |
+| Runs on Docker Compose (no Kubernetes required) | ✅ | N/A | ❌ K8s required | ✅ |
+| PostgreSQL bundled with healthcheck + start-order dependency | ✅ | Separate install | ✅ | Varies |
+| Scheduled DB backups + pruning | ✅ | Manual cron | External (Velero etc.) | Rare |
+| One-command restore script | ✅ | Manual `pg_restore` | Manual | Rare |
+| Upstream images pinned by `sha256` digest | ✅ | N/A | Depends on chart | Rare |
+| Dependabot-tracked weekly updates | ✅ | N/A | Depends | Rare |
+| CI-verified deployment on every push | ✅ | N/A | Varies | Rare |
+| Credentials via env (never committed) | ✅ | N/A | K8s Secrets | Often committed plaintext |
 
-Create networks for your services before deploying the configuration using the commands:
+Four moving parts (Traefik + Keycloak + Postgres + backups). No hidden complexity, no Kubernetes prerequisites, no manual certificate management.
 
-`docker network create traefik-network`
+## Getting started
 
-`docker network create keycloak-network`
+```bash
+# 1. Clone
+git clone https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose
+cd keycloak-traefik-letsencrypt-docker-compose
 
-Deploy Keycloak using Docker Compose:
+# 2. Create the two Docker networks the stack expects
+docker network create traefik-network
+docker network create keycloak-network
 
-`docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d`
+# 3. Copy the environment template and fill in required values
+cp .env.example .env
+$EDITOR .env
+# ^ Required: KEYCLOAK_DB_PASSWORD, KEYCLOAK_ADMIN_PASSWORD,
+#   TRAEFIK_BASIC_AUTH, TRAEFIK_ACME_EMAIL, TRAEFIK_HOSTNAME,
+#   KEYCLOAK_HOSTNAME. See .env.example for generation commands.
+
+# 4. Deploy
+docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d
+```
+
+Within a minute or two, both `https://${KEYCLOAK_HOSTNAME}` (Keycloak UI) and `https://${TRAEFIK_HOSTNAME}` (Traefik dashboard, basic-auth protected) are live with fresh Let's Encrypt certificates.
+
+Apply new `server.cfg` or compose changes:
+
+```bash
+docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d --force-recreate
+```
+
+## Features
+
+- **Keycloak** latest stable (26.2.5) with PostgreSQL 16 backing store.
+- **Traefik v3** reverse proxy with automatic HTTP→HTTPS redirect at entry-point level and Let's Encrypt TLS-ALPN challenge for cert issuance.
+- **Basic-auth protected Traefik dashboard** on a separate hostname.
+- **Prometheus metrics** exposed by Traefik (`--metrics.prometheus`) — wire your own scraper.
+- **Healthchecks** on every service (Postgres `pg_isready`, Keycloak `/health/ready`, Traefik `/ping`) with service-dependency ordering (`depends_on: condition: service_healthy`).
+- **Scheduled PostgreSQL backups** with configurable interval, retention, and destination path.
+- **Automated restore script** (`keycloak-restore-database.sh`) with interactive backup selection.
+- **Traefik exposed-by-default disabled** — only services with `traefik.enable=true` labels are routed.
+- **Credentials required at deploy time** — compose fails fast if `.env` is incomplete, preventing accidental boots with empty or default credentials.
+
+### Typical use cases
+
+- **Self-hosted SSO for homelabs** — wire up Nextcloud, Grafana, Portainer, GitLab (or anything OIDC-capable) behind Keycloak federation.
+- **Small-team identity provider** — consultancies, startups, internal tools that outgrew shared passwords.
+- **Developer sandbox** — spin up a realistic Keycloak for integration testing without provisioning a managed IdP.
+- **Step toward production Kubernetes** — run the Docker Compose stack first, validate the shape, then migrate to a Helm chart once the config is known-good.
+
+## Supply chain trust
+
+This repository is a **deployment template**, not a custom Docker image. It orchestrates three upstream images:
+
+- [`traefik`](https://hub.docker.com/_/traefik) — reverse proxy, Docker Hub official image
+- [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak) — Keycloak upstream
+- [`postgres`](https://hub.docker.com/_/postgres) — PostgreSQL, Docker Hub official image
+
+All three are pinned to `tag@sha256:<digest>` in `.env.example`. Compose pulls by digest, not by tag. Two users deploying this repo on different days get byte-identical image manifests regardless of upstream repushes.
+
+Dependabot's `docker` ecosystem watches each digest and opens a weekly PR when any of them changes. CI's **Deployment Verification** workflow runs on every push, pull request, and every Monday at 06:00 UTC — it stands up the full compose stack with ephemeral credentials, validates HTTPS routing + Traefik dashboard smoke, and tears down. Drift in upstream images surfaces within a week instead of on the next user deploy.
+
+GitHub Actions are also pinned by commit SHA with `# vX.Y.Z` version comments. Dependabot's `github-actions` ecosystem keeps those fresh.
+
+See [`SECURITY.md`](SECURITY.md) for the disclosure policy.
+
+## Production checklist
+
+Before exposing this to real users, check every box:
+
+- [ ] **Rotate the bootstrap admin.** `KEYCLOAK_ADMIN_USERNAME`/`PASSWORD` create a single admin on first start. After login, create your real admin users (preferably via Keycloak Federation or a second-factor-protected account), then disable or delete the bootstrap admin from the Keycloak UI.
+- [ ] **Strong secrets everywhere.** `KEYCLOAK_DB_PASSWORD` and `KEYCLOAK_ADMIN_PASSWORD` must be at least 24 random characters. Generate with `openssl rand -base64 24 | tr -d '/+=' | head -c 32`. Traefik dashboard BCrypt hash must be regenerated per deployment.
+- [ ] **Host-mount the backups volume.** By default the `backups` service writes to a named docker volume. For disaster recovery, bind-mount it to a host path that's included in your off-host backup solution: `- /srv/keycloak-postgres/backups:/srv/keycloak-postgres/backups`.
+- [ ] **Verify Let's Encrypt cert issuance.** Watch Traefik logs during first start: `docker compose -p keycloak logs traefik -f`. A successful TLS-ALPN challenge logs `Adding certificate for domain(s) ${KEYCLOAK_HOSTNAME}` within ~30 seconds.
+- [ ] **Lock down the Traefik dashboard.** The dashboard is basic-auth protected by default, but basic auth is basic. Consider restricting the dashboard's router to specific source IPs via Traefik's `IPAllowList` middleware, or skip exposing it publicly and rely on `docker compose logs`.
+- [ ] **Plan your upgrade path.** Keycloak does not guarantee DB-schema compatibility across major versions. Before bumping `KEYCLOAK_IMAGE_TAG` from 26.x to 27.x (when released), read Keycloak's migration guide, test the bump on a staging database restored from a recent backup.
+- [ ] **Know the restore procedure.** Run `./keycloak-restore-database.sh` against a test environment before you need it in production. Document the `BACKUP_PATH` and restore steps alongside your other DR runbooks.
 
 ## Backups
 
-The `backups` container in the configuration is responsible for the following:
+The `backups` container runs on the same network as Postgres and performs:
 
-1. **Database Backup**: Creates compressed backups of the PostgreSQL database using pg_dump.
-Customizable backup path, filename pattern, and schedule through variables like `POSTGRES_BACKUPS_PATH`, `POSTGRES_BACKUP_NAME`, and `BACKUP_INTERVAL`.
+1. **Dump** — `pg_dump` of the Keycloak database, gzipped, timestamp-named.
+2. **Prune** — deletes backups older than `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` days.
+3. **Sleep** — waits `KEYCLOAK_BACKUP_INTERVAL` before the next dump.
 
-2. **Backup Pruning**: Periodically removes backups exceeding a specified age to manage storage. Customizable pruning schedule and age threshold with `POSTGRES_BACKUP_PRUNE_DAYS` and `DATA_BACKUP_PRUNE_DAYS`.
+All four variables (`KEYCLOAK_BACKUP_INIT_SLEEP`, `KEYCLOAK_BACKUP_INTERVAL`, `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS`, `KEYCLOAK_POSTGRES_BACKUPS_PATH`) are configured via `.env`; see `.env.example` for defaults (30-minute warm-up, 24-hour interval, 7-day retention).
 
-By utilizing this container, consistent and automated backups of the essential components of your instance are ensured. Moreover, efficient management of backup storage and tailored backup routines can be achieved through easy and flexible configuration using environment variables.
+## Restoring a database backup
 
-## keycloak-restore-database.sh Description
+`keycloak-restore-database.sh` handles the restore flow end-to-end:
 
-This script facilitates the restoration of a database backup:
+1. Identifies the `keycloak` and `backups` containers by name.
+2. Lists all available backups from the backups volume.
+3. Prompts you to paste the exact backup filename.
+4. Stops Keycloak (to avoid schema writes during restore).
+5. Drops the live database, re-creates it, and pipes the gzipped backup into `psql`.
+6. Restarts Keycloak.
 
-1. **Identify Containers**: It first identifies the service and backups containers by name, finding the appropriate container IDs.
+Make the script executable, then run:
 
-2. **List Backups**: Displays all available database backups located at the specified backup path.
+```bash
+chmod +x keycloak-restore-database.sh
+./keycloak-restore-database.sh
+```
 
-3. **Select Backup**: Prompts the user to copy and paste the desired backup name from the list to restore the database.
+The script uses the `PGPASSWORD` inherited from the backups container, so no credentials need to be passed on the command line.
 
-4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
+## Security Notes
 
-5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
+- Credentials are read from `.env` at deploy time. `.env` is gitignored. The compose file uses `${VAR:?...}` syntax so `docker compose up` fails immediately with a helpful error if any required variable is missing.
+- **Pre-rotation advisory.** Commits before [PR #12](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/pull/12) (merged 2026-04-23) committed real credential values. Those values remain in git history but are no longer referenced by any live file. Anyone who deployed with the pre-rotation configuration should rotate their live credentials and regenerate the Traefik dashboard BCrypt hash.
+- Traefik dashboard is behind basic auth. Consider adding IP allow-listing for additional isolation.
+- Upstream image digests are pinned; Dependabot auto-opens weekly PRs when digests change.
+- CI runs on every push and every Monday to catch upstream drift.
 
-6. **Start Service**: Restarts the service after the restoration is completed.
+See [`SECURITY.md`](SECURITY.md) for the vulnerability disclosure process.
 
-To make the `keycloak-restore-database.shh` script executable, run the following command:
+---
 
-`chmod +x keycloak-restore-database.sh`
-
-Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
-
-## Author
-
-hey everyone,
-
-💾 I’ve been in the IT game for over 20 years, cutting my teeth with some big names like [IBM](https://www.linkedin.com/in/heyvaldemar/), [Thales](https://www.linkedin.com/in/heyvaldemar/), and [Amazon](https://www.linkedin.com/in/heyvaldemar/). These days, I wear the hat of a DevOps Consultant and Team Lead, but what really gets me going is Docker and container technology - I’m kind of obsessed!
-
-💛 I have my own IT [blog](https://www.heyvaldemar.com/), where I’ve built a [community](https://discord.gg/AJQGCCBcqf) of DevOps enthusiasts who share my love for all things Docker, containers, and IT technologies in general. And to make sure everyone can jump on this awesome DevOps train, I write super detailed guides (seriously, they’re foolproof!) that help even newbies deploy and manage complex IT solutions.
-
-🚀 My dream is to empower every single person in the DevOps community to squeeze every last drop of potential out of Docker and container tech.
-
-🐳 As a [Docker Captain](https://www.docker.com/captains/vladimir-mikhalev/), I’m stoked to share my knowledge, experiences, and a good dose of passion for the tech. My aim is to encourage learning, innovation, and growth, and to inspire the next generation of IT whizz-kids to push Docker and container tech to its limits.
-
-Let’s do this together!
-
-## My 2D Portfolio
-
-🕹️ Click into [sre.gg](https://www.sre.gg/) — my virtual space is a 2D pixel-art portfolio inviting you to interact with elements that encapsulate the milestones of my DevOps career.
-
-## My Courses
-
-🎓 Dive into my [comprehensive IT courses](https://www.heyvaldemar.com/courses/) designed for enthusiasts and professionals alike. Whether you're looking to master Docker, conquer Kubernetes, or advance your DevOps skills, my courses provide a structured pathway to enhancing your technical prowess.
-
-🔑 [Each course](https://www.udemy.com/user/heyvaldemar/) is built from the ground up with real-world scenarios in mind, ensuring that you gain practical knowledge and hands-on experience. From beginners to seasoned professionals, there's something here for everyone to elevate their IT skills.
-
-## My Services
-
-💼 Take a look at my [service catalog](https://www.heyvaldemar.com/services/) and find out how we can make your technological life better. Whether it's increasing the efficiency of your IT infrastructure, advancing your career, or expanding your technological horizons — I'm here to help you achieve your goals. From DevOps transformations to building gaming computers — let's make your technology unparalleled!
-
-## Patreon Exclusives
-
-🏆 Join my [Patreon](https://www.patreon.com/heyvaldemar) and dive deep into the world of Docker and DevOps with exclusive content tailored for IT enthusiasts and professionals. As your experienced guide, I offer a range of membership tiers designed to suit everyone from newbies to IT experts.
-
-## My Recommendations
-
-📕 Check out my collection of [essential DevOps books](https://kit.co/heyvaldemar/essential-devops-books)\
-🖥️ Check out my [studio streaming and recording kit](https://kit.co/heyvaldemar/my-studio-streaming-and-recording-kit)\
-📡 Check out my [streaming starter kit](https://kit.co/heyvaldemar/streaming-starter-kit)
-
-## Follow Me
-
-🎬 [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1)\
-🐦 [X / Twitter](https://twitter.com/heyvaldemar)\
-🎨 [Instagram](https://www.instagram.com/heyvaldemar/)\
-🐘 [Mastodon](https://mastodon.social/@heyvaldemar)\
-🧵 [Threads](https://www.threads.net/@heyvaldemar)\
-🎸 [Facebook](https://www.facebook.com/heyvaldemarFB/)\
-🧊 [Bluesky](https://bsky.app/profile/heyvaldemar.bsky.social)\
-🎥 [TikTok](https://www.tiktok.com/@heyvaldemar)\
-💻 [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)\
-📣 [daily.dev Squad](https://app.daily.dev/squads/devopscompass)\
-🧩 [LeetCode](https://leetcode.com/u/heyvaldemar/)\
-🐈 [GitHub](https://github.com/heyvaldemar)
-
-## Community of IT Experts
-
-👾 [Discord](https://discord.gg/AJQGCCBcqf)
-
-## Refill My Coffee Supplies
-
-💖 [PayPal](https://www.paypal.com/paypalme/heyvaldemarCOM)\
-🏆 [Patreon](https://www.patreon.com/heyvaldemar)\
-💎 [GitHub](https://github.com/sponsors/heyvaldemar)\
-🥤 [BuyMeaCoffee](https://www.buymeacoffee.com/heyvaldemar)\
-🍪 [Ko-fi](https://ko-fi.com/heyvaldemar)
-
-🌟 **Bitcoin (BTC):** bc1q2fq0k2lvdythdrj4ep20metjwnjuf7wccpckxc\
-🔹 **Ethereum (ETH):** 0x76C936F9366Fad39769CA5285b0Af1d975adacB8\
-🪙 **Binance Coin (BNB):** bnb1xnn6gg63lr2dgufngfr0lkq39kz8qltjt2v2g6\
-💠 **Litecoin (LTC):** LMGrhx8Jsx73h1pWY9FE8GB46nBytjvz8g
+## About the maintainer
 
 <div align="center">
 
-### Show some 💜 by starring some of the [repositories](https://github.com/heyValdemar?tab=repositories)!
+**Maintained by [Vladimir Mikhalev](https://github.com/heyvaldemar)** — Docker Captain · IBM Champion · AWS Community Builder
 
-![octocat](https://user-images.githubusercontent.com/10498744/210113490-e2fad07f-4488-4da8-a656-b9abbdd8cb26.gif)
+[YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1) · [Blog](https://heyvaldemar.com) · [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)
 
 </div>
-
-![footer](https://user-images.githubusercontent.com/10498744/210157572-1fca0242-8af2-46a6-bfa3-666ffd40ebde.svg)
