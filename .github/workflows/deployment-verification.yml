@@ -21,9 +21,87 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint shell scripts and workflow YAML
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: ShellCheck
+        # Uses the official koalaman/shellcheck-alpine image directly rather
+        # than an intermediate GitHub Action, so there is one less supply-chain
+        # layer to pin and review.
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            koalaman/shellcheck-alpine:stable \
+            shellcheck ./*.sh
+
+      - name: actionlint (GitHub Actions workflow linting)
+        # Uses the rhysd/actionlint image directly pinned to a specific
+        # version. Surfaces workflow typos, invalid references to jobs/
+        # outputs, and common GitHub Actions footguns the YAML parser
+        # doesn't catch. actionlint itself is a single Go binary.
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            rhysd/actionlint:1.7.12 \
+            -color
+
+  scan-trivy:
+    name: Scan pinned upstream image with Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Trivy findings don't block the pipeline — they surface in the Security
+    # tab where they can be triaged and fixed via Dependabot upstream-digest
+    # bumps. A hard block here would cause CI failures on every new CVE
+    # disclosure, which isn't actionable inside this PR.
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      # One job per upstream image — findings show up separately in the
+      # GitHub Security tab under distinct categories (trivy-postgres,
+      # trivy-traefik, trivy-keycloak).
+      fail-fast: false
+      matrix:
+        include:
+          - name: postgres
+            image: "postgres:16@sha256:71e27bf60b70bded003791b5573f8b808365613f341df20ffcf0c1ed7bc13ddf"
+          - name: traefik
+            image: "traefik:3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9"
+          - name: keycloak
+            image: "quay.io/keycloak/keycloak:26.2.5@sha256:4883630ef9db14031cde3e60700c9a9a8eaf1b5c24db1589d6a2d43de38ba2a9"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Trivy scan of ${{ matrix.name }}
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF (${{ matrix.name }}) to GitHub Security
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
+
   deploy-and-test:
     name: docker compose up + HTTPS + Traefik dashboard smoke
     runs-on: ubuntu-latest
+    # Wait for lint to pass so we don't burn the 15-minute compose-up slot
+    # on a workflow that has shellcheck/actionlint errors. scan-trivy runs
+    # in parallel (not a dependency) since findings don't block deployment.
+    needs: lint
     timeout-minutes: 15
     permissions:
       contents: read
@@ -85,6 +163,9 @@ jobs:
       - name: Wait for the application to be ready via Traefik
         run: |
           echo "Checking the routing and availability of the application via Traefik..."
+          # $APP_HOSTNAME is intentionally expanded by the inner bash -c
+          # (which inherits the job-level env:), not by the outer shell.
+          # shellcheck disable=SC2016
           timeout 5m bash -c 'while ! curl -fsSLk "https://$APP_HOSTNAME"; do
             echo "Waiting for the application to be ready..."
             sleep 10
@@ -93,6 +174,8 @@ jobs:
       - name: Wait for the Traefik dashboard to be ready
         run: |
           echo "Checking the routing and availability of the Traefik dashboard..."
+          # Same deferred-expansion pattern as above.
+          # shellcheck disable=SC2016
           timeout 5m bash -c 'while ! curl -fsSLk --write-out "%{http_code}" --output /dev/null "https://$APP_TRAEFIK_HOSTNAME" | grep -E "200|401"; do
             echo "Waiting for the application to be ready..."
             sleep 10
