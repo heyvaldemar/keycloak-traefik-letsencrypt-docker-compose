@@ -282,3 +282,9 @@ xcuserdata/
 **/xcshareddata/WorkspaceSettings.xcsettings
 
 # End of https://www.toptal.com/developers/gitignore/api/git,macos,xcode,jekyll,packer,ansible,vagrant,windows,notepadpp,terraform,powershell,terragrunt,sublimetext,ansibletower,visualstudiocode,linux
+
+### Project-specific ###
+# Environment file — contains secrets (KEYCLOAK_DB_PASSWORD, KEYCLOAK_ADMIN_PASSWORD,
+# TRAEFIK_BASIC_AUTH BCrypt hash). Users copy .env.example → .env locally and fill in
+# real values. Never commit the real .env.
+.env
