@@ -8,9 +8,11 @@ The badge displayed on my repository indicates the status of the deployment veri
 
 📙 The complete installation guide is available on my [website](https://www.heyvaldemar.com/install-keycloak-using-docker-compose/).
 
-❗ Change variables in the `.env` to meet your requirements.
+❗ Copy `.env.example` to `.env` and fill in `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, and `TRAEFIK_BASIC_AUTH` (required) plus any other variables before first start.
 
-💡 Note that the `.env` file should be in the same directory as `keycloak-traefik-letsencrypt-docker-compose.yml`.
+💡 `.env` must sit in the same directory as `keycloak-traefik-letsencrypt-docker-compose.yml`.
+
+> ⚠️ **Security advisory.** Before this change, `.env` shipped with hardcoded credentials (`KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, and a `TRAEFIK_BASIC_AUTH` BCrypt hash) in git history. Anyone who deployed using the committed defaults should rotate those credentials immediately. The file is now gitignored and `.env.example` documents a secure `cp` + edit workflow.
 
 Create networks for your services before deploying the configuration using the commands:
 

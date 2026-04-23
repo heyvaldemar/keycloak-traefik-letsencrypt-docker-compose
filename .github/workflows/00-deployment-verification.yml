@@ -29,6 +29,32 @@ jobs:
           docker network create $NETWORK_ONE || true
           docker network create $NETWORK_TWO || true
 
+      - name: Generate test .env with ephemeral credentials
+        # The real .env is gitignored. CI generates throwaway credentials so
+        # `docker compose up` succeeds without committing secrets to the repo.
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_IMAGE_TAG=traefik:3.2
+          TRAEFIK_LOG_LEVEL=WARN
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_POSTGRES_IMAGE_TAG=postgres:16
+          KEYCLOAK_IMAGE_TAG=quay.io/keycloak/keycloak:26.2.5
+          KEYCLOAK_DB_NAME=keycloakdb
+          KEYCLOAK_DB_USER=keycloakdbuser
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_USERNAME=keycloakadmin
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=${APP_HOSTNAME}
+          KEYCLOAK_BACKUP_INIT_SLEEP=30m
+          KEYCLOAK_BACKUP_INTERVAL=24h
+          KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS=7
+          KEYCLOAK_POSTGRES_BACKUPS_PATH=/srv/keycloak-postgres/backups
+          KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
+          EOF
+          echo "Generated ephemeral .env for CI run"
+
       - name: Start up services using Docker Compose
         run: docker compose -f $DOCKER_COMPOSE_FILE -p $COMPOSE_PROJECT_NAME up -d
 
