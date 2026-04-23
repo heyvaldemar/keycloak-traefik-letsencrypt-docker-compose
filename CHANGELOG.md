@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CHANGELOG.md` — this file, Keep-a-Changelog format.
 
 ### Changed
+- README rewritten for evaluator-first audience. Replaces the prior affiliate-and-socials-heavy footer with a focused technical structure: badges, table of contents, "Why this stack?" comparison table vs manual install / Helm / other compose examples, Getting started quickstart, Features + Typical use cases, Supply chain trust, Production checklist (7-item deployment-readiness check), preserved Backups and Restore sections, Security Notes, compact maintainer footer (YouTube · Blog · LinkedIn). Removes: first-person bio, "My Courses", "My Services", Patreon tiers, affiliate kit.co links, crypto wallet addresses, Discord invite, octocat gif, footer SVG.
 - Upstream images pinned by `sha256` digest in addition to tag in `.env.example`
   and the CI ephemeral `.env`. Three images are pinned:
   - `traefik:3.2@sha256:e561a37f…`
