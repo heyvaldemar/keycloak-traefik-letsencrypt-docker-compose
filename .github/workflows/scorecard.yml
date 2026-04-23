@@ -1,0 +1,62 @@
+name: OpenSSF Scorecard
+
+on:
+  branch_protection_rule:
+  schedule:
+    # Weekly on Tuesdays at 06:00 UTC — after the Monday 06:00 UTC deployment
+    # verification run (deployment-verification.yml). Keeps the Scorecard
+    # score in sync with any weekly change in pinned-dependency posture.
+    - cron: "0 6 * * 2"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Scorecard needs broad read access to score the repo; individual jobs
+# narrow this further for the steps that need write scopes.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Needed for SARIF upload to the Security tab.
+      security-events: write
+      # Needed to publish results to the public OpenSSF API (scorecard.dev).
+      id-token: write
+      # Needed to read the repo state and workflow history.
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard analysis
+        # Pinned to the commit SHA of v2.4.3 (not the tag-object SHA returned
+        # by GitHub's /git/refs/tags endpoint, which Scorecard's own
+        # imposter-commit check rejects). See aws-kubectl-docker PR #24 for
+        # the background.
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publish results to the public OpenSSF API so the README badge
+          # populates. No token needed for public repos; the workflow's OIDC
+          # token authenticates.
+          publish_results: true
+
+      - name: Upload Scorecard results as workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+        with:
+          sarif_file: results.sarif
