@@ -62,7 +62,7 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up
 
 Within a minute or two, both `https://${KEYCLOAK_HOSTNAME}` (Keycloak UI) and `https://${TRAEFIK_HOSTNAME}` (Traefik dashboard, basic-auth protected) are live with fresh Let's Encrypt certificates.
 
-Apply new `server.cfg` or compose changes:
+Apply `.env` or compose-file changes:
 
 ```bash
 docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d --force-recreate
