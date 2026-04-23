@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `.github/workflows/scorecard.yml` — OpenSSF Scorecard analysis workflow.
+  Runs weekly on Tuesdays at 06:00 UTC (one day after the Monday deployment
+  verification run), on every push to `main`, and on branch-protection-rule
+  changes. Publishes results to the public OpenSSF API (scorecard.dev
+  viewer) and uploads SARIF to the GitHub Security tab. All action pins
+  are commit-SHA based, including the dereferenced commit SHA for the
+  annotated-tag `ossf/scorecard-action@v2.4.3` (plain `@v2.4.3` tag-object
+  SHA is rejected by Scorecard's imposter-commit verification).
+- README badge for OpenSSF Scorecard, placed between the Deployment
+  Verification and License badges.
 - `LICENSE` — canonical MIT license text at repo root, `Copyright (c) 2021-2026 Vladimir Mikhalev (heyvaldemar)`.
 - `SECURITY.md` — vulnerability disclosure policy, supported versions, supply-chain trust statement, and a callout for the pre-PR-#12 credential rotation advisory.
 - `CHANGELOG.md` — this file, Keep-a-Changelog format.
