@@ -1,6 +1,7 @@
 # Keycloak + Traefik + Let's Encrypt — Docker Compose
 
 [![Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/badge)](https://scorecard.dev/viewer/?uri=github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Contents
