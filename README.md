@@ -117,26 +117,55 @@ Before exposing this to real users, check every box:
 
 ## Backups
 
-The `backups` container runs on the same network as Postgres and performs:
+The `backups` container runs on the same network as Postgres and performs a dump → prune → sleep loop:
 
-1. **Dump** — `pg_dump` of the Keycloak database, gzipped, timestamp-named.
-2. **Prune** — deletes backups older than `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` days.
+1. **Dump** — `pg_dump` of the Keycloak database piped through `gzip`, timestamp-named. `set -o pipefail` catches `pg_dump` failures even though `gzip` exits 0. Failed dumps are renamed with a `.failed` suffix for diagnosis; the loop continues to the next cycle.
+2. **Prune** — deletes files matching `${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz` older than `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` days. Set `PRUNE_DAYS=0` to disable pruning entirely.
 3. **Sleep** — waits `KEYCLOAK_BACKUP_INTERVAL` before the next dump.
 
-All four variables (`KEYCLOAK_BACKUP_INIT_SLEEP`, `KEYCLOAK_BACKUP_INTERVAL`, `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS`, `KEYCLOAK_POSTGRES_BACKUPS_PATH`) are configured via `.env`; see `.env.example` for defaults (30-minute warm-up, 24-hour interval, 7-day retention).
+All four knobs (`KEYCLOAK_BACKUP_INIT_SLEEP`, `KEYCLOAK_BACKUP_INTERVAL`, `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS`, `KEYCLOAK_POSTGRES_BACKUPS_PATH`) are configured via `.env`. See `.env.example` for defaults (30-minute warm-up, 24-hour interval, 7-day retention).
+
+**Verify backups are running:**
+
+```bash
+docker compose -p keycloak logs backups | tail -20
+```
+
+Expected output — one timestamped line per backup cycle:
+
+```
+[2026-04-23T03:00:01+00:00] Starting backup to /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00.gz
+[2026-04-23T03:00:03+00:00] Backup OK: /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00.gz (47382 bytes)
+```
+
+A `Backup FAILED` line (with the partial file renamed to `.failed`) is your signal that something is broken — typically the postgres container is unhealthy, the backup volume filled up, or the DB credentials were rotated without updating the backups container environment.
+
+**Off-host replication.** By default backups live in the `keycloak-database-backups` Docker volume — if the host dies, backups die with it. For disaster recovery, bind-mount the backup path to a host directory that your off-host backup solution (restic, rclone, Borg, S3 sync, etc.) already covers:
+
+```yaml
+# docker-compose.override.yml
+services:
+  backups:
+    volumes:
+      - /srv/keycloak-postgres/backups:/srv/keycloak-postgres/backups
+```
 
 ## Restoring a database backup
 
-`keycloak-restore-database.sh` handles the restore flow end-to-end:
+`keycloak-restore-database.sh` handles the restore flow end-to-end with safety guards at every step where data loss is possible:
 
-1. Identifies the `keycloak` and `backups` containers by name.
-2. Lists all available backups from the backups volume.
-3. Prompts you to paste the exact backup filename.
-4. Stops Keycloak (to avoid schema writes during restore).
-5. Drops the live database, re-creates it, and pipes the gzipped backup into `psql`.
-6. Restarts Keycloak.
+1. **Sources `.env`** — DB name/user/backups path read from your live configuration (not hardcoded). Works after you customise the defaults.
+2. **Lists available backups** from the backups volume.
+3. **Prompts for selection** — you copy-paste the filename. The script rejects typos / path-traversal by validating the selection against the listed filenames.
+4. **Integrity-checks** the selected archive via `gunzip -t`. A corrupt archive is caught here, before anything is touched.
+5. **Requires `DESTROY` confirmation** — typing anything else (including empty) aborts without changes.
+6. **Creates a pre-restore snapshot** of the CURRENT database state at `/tmp/pre-restore-<timestamp>.gz` inside the backups container. This is your rollback if the restore produces a broken DB.
+7. **Stops Keycloak**, drops + recreates the database, pipes the selected backup into `psql`.
+8. **Starts Keycloak**, waits up to 2 minutes for the healthcheck to report `healthy`, then runs a sanity query confirming the `public` schema has tables.
 
-Make the script executable, then run:
+If step 8 fails (Keycloak unhealthy, or the restored DB has 0 public-schema tables), the script exits non-zero and prints the exact command sequence to recover from the pre-restore snapshot.
+
+Make the script executable, then run from the repository root (where `.env` lives):
 
 ```bash
 chmod +x keycloak-restore-database.sh
@@ -144,6 +173,15 @@ chmod +x keycloak-restore-database.sh
 ```
 
 The script uses the `PGPASSWORD` inherited from the backups container, so no credentials need to be passed on the command line.
+
+**RTO / RPO expectations** for the default configuration:
+
+| Metric | Default value | How to tighten |
+|---|---|---|
+| **RPO** (max data loss) | 24 hours (one `KEYCLOAK_BACKUP_INTERVAL`) | Reduce `KEYCLOAK_BACKUP_INTERVAL` (e.g. `1h`) |
+| **RTO** (typical restore time) | 1-3 minutes on a small DB; scales with DB size | Keep Keycloak state lean (realms + clients only, ship audit logs elsewhere) |
+| **Backup retention** | 7 days (one `PRUNE_DAYS`) | Increase `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` |
+| **Pre-restore snapshot** | Automatic before every restore, kept at `/tmp/pre-restore-*.gz` inside the backups container | — |
 
 ## Security Notes
 
