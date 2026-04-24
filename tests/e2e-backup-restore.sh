@@ -130,6 +130,25 @@ wait_for_postgres_ready() {
   return 1
 }
 
+# The first backup cycle fires ~INIT_SLEEP (10s in CI) after the backups
+# container starts — which on a cold runner is often BEFORE Keycloak
+# finishes populating its public schema. Without a guaranteed table in the
+# DB, the first backup's SQL body is just headers + SETs, and
+# test_backup_sql_valid fails looking for CREATE TABLE. Creating a marker
+# table at test-setup time pins a CREATE TABLE statement into every
+# backup captured from now on, independent of Keycloak's own startup race.
+setup_marker_table() {
+  echo "--> creating backup_sql_valid_marker so every backup has CREATE TABLE content"
+  if ! docker exec "$BACKUPS_CONTAINER" psql \
+      -h postgres -p 5432 \
+      -U "$KEYCLOAK_DB_USER" -d "$KEYCLOAK_DB_NAME" \
+      -c "CREATE TABLE IF NOT EXISTS backup_sql_valid_marker (id int PRIMARY KEY);" \
+      > /dev/null; then
+    echo "error: failed to create marker table" >&2
+    exit 1
+  fi
+}
+
 # --- Test cases ---
 
 test_env_required() {
@@ -331,6 +350,10 @@ echo "  BACKUPS_CONTAINER=${BACKUPS_CONTAINER}"
 echo "  POSTGRES_CONTAINER=${POSTGRES_CONTAINER}"
 echo "  BACKUPS_PATH=${BACKUPS_PATH}"
 echo "  BACKUP_PREFIX=${BACKUP_PREFIX}"
+
+# Pin a known CREATE TABLE into the DB before the first backup cycle fires
+# (explanation in setup_marker_table).
+setup_marker_table
 
 run_test test_env_required
 run_test test_backup_created
