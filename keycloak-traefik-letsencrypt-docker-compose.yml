@@ -162,12 +162,32 @@ services:
 
   backups:
     image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+    # Backup loop with failure detection:
+    #   - `set -o pipefail` so a pg_dump error fails the pipe even though gzip exits 0.
+    #   - Failed dumps are renamed *.failed for post-hoc diagnosis; the loop continues.
+    #   - Each cycle emits one timestamped log line ($docker compose logs backups).
+    #   - Prune scope restricted to ${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz — cannot
+    #     accidentally delete files with unrelated names.
+    #   - PRUNE_DAYS=0 disables pruning entirely (guard against the "PRUNE_DAYS=0
+    #     deletes everything" misconfiguration).
     command: >-
-      sh -c 'sleep $KEYCLOAK_BACKUP_INIT_SLEEP &&
+      sh -c 'set -o pipefail;
+      sleep "$KEYCLOAK_BACKUP_INIT_SLEEP";
       while true; do
-        pg_dump -h postgres -p 5432 -d $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER | gzip > $KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
-        find $KEYCLOAK_POSTGRES_BACKUPS_PATH -type f -mtime +$KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
-        sleep $KEYCLOAK_BACKUP_INTERVAL; done'
+        BACKUP_FILE="$KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date +%Y-%m-%d_%H-%M).gz";
+        echo "[$(date -Iseconds)] Starting backup to $BACKUP_FILE";
+        if pg_dump -h postgres -p 5432 -d "$KEYCLOAK_DB_NAME" -U "$KEYCLOAK_DB_USER" | gzip > "$BACKUP_FILE"; then
+          SIZE=$(stat -c %s "$BACKUP_FILE" 2>/dev/null || echo ?);
+          echo "[$(date -Iseconds)] Backup OK: $BACKUP_FILE ($SIZE bytes)";
+        else
+          echo "[$(date -Iseconds)] Backup FAILED — renaming partial file to .failed for diagnosis" >&2;
+          mv "$BACKUP_FILE" "${BACKUP_FILE}.failed" 2>/dev/null || true;
+        fi;
+        if [ "${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$KEYCLOAK_POSTGRES_BACKUPS_PATH" -type f -name "${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz" -mtime "+${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}" -delete;
+        fi;
+        sleep "$KEYCLOAK_BACKUP_INTERVAL";
+      done'
     volumes:
       - keycloak-postgres-backup:/var/lib/postgresql/data
       - keycloak-database-backups:${KEYCLOAK_POSTGRES_BACKUPS_PATH}
