@@ -23,6 +23,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CHANGELOG.md` — this file, Keep-a-Changelog format.
 
 ### Changed
+- **Backup/restore safety hardening.** Closes four HIGH-severity gaps in the
+  backup + restore flow identified during the post-runbook-v1.2 audit. No
+  functional regression — existing backups remain restorable by the new
+  script.
+  - `keycloak-restore-database.sh` now sources `.env` so the DB name, user,
+    and backup path match whatever is deployed (previously hardcoded to the
+    defaults, which broke on customisation).
+  - Script runs under `set -euo pipefail`; any failure mid-flow aborts with
+    non-zero exit instead of silently continuing.
+  - `gunzip -t` integrity check runs against the selected backup BEFORE the
+    live database is touched. A corrupt archive is caught here, not mid-
+    restore with a half-loaded DB.
+  - Requires typing `DESTROY` to confirm the destructive operation. Any
+    other input (including empty / accidental Enter) aborts without
+    changes.
+  - Takes a pre-restore snapshot of the CURRENT database state to
+    `/tmp/pre-restore-<timestamp>.gz` inside the backups container BEFORE
+    dropping the live DB. The snapshot path is printed; if the restore
+    produces a broken DB, the script exits non-zero and prints the exact
+    command to recover from the snapshot.
+  - Post-restore verification: waits up to 2 minutes for Keycloak's
+    healthcheck to report `healthy`, then runs a sanity query asserting
+    the `public` schema has >0 tables. Either check failing prints the
+    rollback-from-snapshot command and exits non-zero.
+  - Selection input validated against the listed backup filenames —
+    rejects typos and path-traversal ( `../` etc.).
+- **Backup loop hardened in the `backups` compose service.**
+  `pg_dump | gzip > file` now runs under `set -o pipefail`, so a `pg_dump`
+  error fails the pipe instead of silently producing an empty gzip.
+  Failed backups are renamed `*.failed` for post-hoc diagnosis instead of
+  overwriting the next cycle. Each cycle emits one timestamped log line
+  (`[TIMESTAMP] Backup OK: <path> (<bytes>)` or `... Backup FAILED`).
+  The prune scope is restricted to `${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz`
+  (cannot delete unrelated files) and `PRUNE_DAYS=0` disables pruning
+  entirely instead of deleting everything. `find -delete` replaces
+  `find | xargs rm -f` for idiomatic correctness on empty input.
+- README Backups + Restore sections expanded with observability command
+  (`docker compose logs backups | tail -20` + expected output shape),
+  off-host-replication override example, and an RTO/RPO table with
+  tightening knobs.
 - Deployment-verification workflow gained two new jobs:
   - **`lint`** — runs `shellcheck` (via `koalaman/shellcheck-alpine:stable`) on
     every `*.sh` in the repo root, and `actionlint` (via
