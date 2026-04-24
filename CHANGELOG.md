@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`0 6 * * 1`) for upstream image drift detection, and `workflow_dispatch`
   trigger for manual runs. Workflow file renamed `00-deployment-verification.yml`
   → `deployment-verification.yml`.
+- `SECURITY.md` Supply Chain Trust section synced with
+  [self-host-repo-hardening-runbook v1.2](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/releases/tag/v1.2.0)
+  template. Replaces the stale "will migrate to immutable `@sha256:...` digests
+  in an upcoming PR" language (that migration shipped in PR #14) with the
+  current-state description: digests pinned in `.env.example`, Dependabot
+  weekly bumps, CI weekly drift detection. Adds the GitHub-Actions-pinned-by-
+  commit-SHA statement that the template now includes.
 
 ### Removed
 - `.github/FUNDING.yml` — sponsor discovery moves to heyvaldemar.com. Aligns with the same decision applied across other heyvaldemar public repositories.

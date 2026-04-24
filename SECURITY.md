@@ -25,7 +25,9 @@ This repository publishes a **deployment template**, not a custom Docker image. 
 - [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak) — Keycloak upstream
 - [`postgres`](https://hub.docker.com/_/postgres) — PostgreSQL, official image
 
-Upstream image tags are pinned to specific versions and will migrate to immutable `@sha256:...` digests in an upcoming PR. Dependabot's `docker` ecosystem tracks digest bumps weekly.
+Upstream image tags are pinned to `tag@sha256:<digest>` in `.env.example`. Dependabot's `docker` ecosystem tracks digest bumps weekly. CI's Deployment Verification workflow stands up the full compose stack on every push and every Monday at 06:00 UTC, catching upstream drift before it reaches users.
+
+GitHub Actions are pinned by commit SHA with `# vX.Y.Z` version comments.
 
 ## Known historical issue
 
