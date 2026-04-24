@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Backup filename collision at sub-minute intervals.** Backup filenames
+  use only minute granularity
+  (`keycloak-postgres-backup-YYYY-MM-DD_HH-MM.gz`), so two cycles inside
+  the same minute produced identical paths and the second overwrote the
+  first. At production defaults (`INTERVAL=24h`) the bug is unreachable,
+  but the new e2e test harness drives `INTERVAL=30s` and surfaced it on
+  the first run — `test_backup_failure_detected` renamed the previously
+  successful backup to `.failed` because pg_dump's partial output landed
+  at the same filename. Fix: timestamp format extended to include seconds
+  (`YYYY-MM-DD_HH-MM-SS.gz`). Prune glob pattern still matches. Restore
+  script's example filename updated; README's expected-log-output example
+  updated.
 - **Compose interpolation bug in the `backups` service command.** PR #21
   introduced two local container-shell variables (`$BACKUP_FILE`, `$SIZE`)
   inside the `command: >-` block without `$$` escapes. Docker compose

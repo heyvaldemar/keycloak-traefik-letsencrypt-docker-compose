@@ -135,8 +135,8 @@ docker compose -p keycloak logs backups | tail -20
 Expected output — one timestamped line per backup cycle:
 
 ```
-[2026-04-23T03:00:01+00:00] Starting backup to /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00.gz
-[2026-04-23T03:00:03+00:00] Backup OK: /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00.gz (47382 bytes)
+[2026-04-23T03:00:01+00:00] Starting backup to /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00-01.gz
+[2026-04-23T03:00:03+00:00] Backup OK: /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00-01.gz (47382 bytes)
 ```
 
 A `Backup FAILED` line (with the partial file renamed to `.failed`) is your signal that something is broken — typically the postgres container is unhealthy, the backup volume filled up, or the DB credentials were rotated without updating the backups container environment.
