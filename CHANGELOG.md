@@ -7,7 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Compose interpolation bug in the `backups` service command.** PR #21
+  introduced two local container-shell variables (`$BACKUP_FILE`, `$SIZE`)
+  inside the `command: >-` block without `$$` escapes. Docker compose
+  interpolated them at config time against the empty .env values and
+  produced `BACKUP_FILE=""` at container runtime — every backup cycle ran
+  `pg_dump | gzip > ""` and emitted `Backup FAILED` with
+  `sh: cannot create : Directory nonexistent`. Zero-byte files never landed,
+  so the `backup-created` test case surfaced the regression on the first CI
+  run. Fix: escape every container-shell reference in the command with `$$`
+  (including the pre-existing `$KEYCLOAK_*` vars that happen to also appear
+  in the `environment:` block). Added a block comment in the compose file
+  explaining the escape convention so future edits don't reintroduce the
+  same bug.
+
 ### Added
+- **End-to-end backup/restore CI tests.** New `backup-restore-e2e` job in
+  `deployment-verification.yml` runs `tests/e2e-backup-restore.sh` on every
+  push, pull request, and the Monday weekly cron. Parallel to
+  `deploy-and-test` — backup/restore is orthogonal to HTTPS routing, so one
+  failing doesn't mask the other; both fan out from `needs: lint` so the
+  compose-up slot isn't burned on workflow-syntax errors. The job generates
+  an ephemeral `.env` with short backup intervals
+  (`INIT_SLEEP=10s`, `INTERVAL=30s`, `PRUNE_DAYS=7`) so the seven-test suite
+  completes in <5 min wall-clock. `timeout-minutes: 15`, 
+  `permissions: contents: read`, `docker compose down` in an
+  `if: always()` teardown step.
+- `tests/e2e-backup-restore.sh` — seven shellcheck-clean test cases that
+  exercise every guard PR #21 landed: `test_env_required` (compose `${VAR:?}`
+  gate), `test_backup_created` (cycle produces non-empty `.gz`),
+  `test_backup_gunzip_ok` (archive is a valid gzip stream),
+  `test_backup_sql_valid` (decompressed dump has `PostgreSQL database dump` +
+  `CREATE TABLE`/`CREATE SCHEMA`), `test_backup_failure_detected` (stopping
+  postgres produces a `*.failed` file and `Backup FAILED` log line),
+  `test_restore_roundtrip` (insert marker → restore earlier backup → marker
+  absent, proving restore is not a no-op), `test_prune_removes_old` (fake
+  file with 14-day-old mtime is deleted on next prune cycle; recent backups
+  preserved).
+- `tests/README.md` — local-run instructions, test-case descriptions, and
+  required `.env` timing knobs.
+- README `Testing` section between Restoring and Security Notes; TOC updated.
+- The `lint` job's shellcheck invocation now covers `tests/*.sh` in addition
+  to repo-root `*.sh` so the e2e test runner is linted alongside the
+  restore script.
 - `.github/workflows/scorecard.yml` — OpenSSF Scorecard analysis workflow.
   Runs weekly on Tuesdays at 06:00 UTC (one day after the Monday deployment
   verification run), on every push to `main`, and on branch-protection-rule
