@@ -92,7 +92,7 @@ done
 
 echo
 echo "--> Copy and paste the backup name from the list above, then press [ENTER]."
-echo "    Example: keycloak-postgres-backup-YYYY-MM-DD_hh-mm.gz"
+echo "    Example: keycloak-postgres-backup-YYYY-MM-DD_hh-mm-ss.gz"
 echo -n "--> "
 read -r SELECTED_BACKUP
 

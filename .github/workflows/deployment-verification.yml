@@ -34,11 +34,12 @@ jobs:
       - name: ShellCheck
         # Uses the official koalaman/shellcheck-alpine image directly rather
         # than an intermediate GitHub Action, so there is one less supply-chain
-        # layer to pin and review.
+        # layer to pin and review. Covers both repo-root scripts and the
+        # tests/ directory so the backup-restore-e2e runner is linted too.
         run: |
           docker run --rm -v "$PWD:/mnt" -w /mnt \
             koalaman/shellcheck-alpine:stable \
-            shellcheck ./*.sh
+            shellcheck ./*.sh tests/*.sh
 
       - name: actionlint (GitHub Actions workflow linting)
         # Uses the rhysd/actionlint image directly pinned to a specific
@@ -185,6 +186,93 @@ jobs:
         run: |
           docker network inspect "$NETWORK_ONE"
           docker network inspect "$NETWORK_TWO"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs
+
+      - name: Shutdown Docker Compose services
+        if: always()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" down
+
+  backup-restore-e2e:
+    name: Backup + restore end-to-end smoke
+    runs-on: ubuntu-latest
+    # Parallel to deploy-and-test — backup/restore is orthogonal to HTTPS
+    # routing, so one job failing doesn't mask the other. Both fan out from
+    # `lint` so we don't burn the compose-up slot on a workflow with
+    # shellcheck/actionlint errors.
+    needs: lint
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    env:
+      NETWORK_ONE: keycloak-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: keycloak-traefik-letsencrypt-docker-compose.yml
+      COMPOSE_PROJECT_NAME: keycloak
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Create necessary Docker networks
+        run: |
+          docker network create "$NETWORK_ONE" || true
+          docker network create "$NETWORK_TWO" || true
+
+      - name: Generate test .env with short backup intervals
+        # CI tunes the backup loop timings from 30m/24h down to 10s/30s so
+        # the backup cycle tests can complete in <5 min wall-clock. The
+        # hostnames here are placeholder — this job never exercises Traefik
+        # or Keycloak HTTPS routing (that's deploy-and-test's responsibility).
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_IMAGE_TAG=traefik:3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9
+          TRAEFIK_LOG_LEVEL=WARN
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=traefik.keycloak.ci.example
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_POSTGRES_IMAGE_TAG=postgres:16@sha256:71e27bf60b70bded003791b5573f8b808365613f341df20ffcf0c1ed7bc13ddf
+          KEYCLOAK_IMAGE_TAG=quay.io/keycloak/keycloak:26.2.5@sha256:4883630ef9db14031cde3e60700c9a9a8eaf1b5c24db1589d6a2d43de38ba2a9
+          KEYCLOAK_DB_NAME=keycloakdb
+          KEYCLOAK_DB_USER=keycloakdbuser
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_USERNAME=keycloakadmin
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=keycloak.ci.example
+          KEYCLOAK_BACKUP_INIT_SLEEP=10s
+          KEYCLOAK_BACKUP_INTERVAL=30s
+          KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS=7
+          KEYCLOAK_POSTGRES_BACKUPS_PATH=/srv/keycloak-postgres/backups
+          KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
+          EOF
+
+      - name: Start up services using Docker Compose
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d
+
+      - name: Wait for postgres to become healthy
+        # docker compose --wait would be nicer but isn't universally
+        # available on the runner's compose version. Polling pg_isready
+        # is equivalent and works everywhere.
+        run: |
+          for i in $(seq 1 60); do
+            if docker exec "$(docker ps -aqf "name=${COMPOSE_PROJECT_NAME}-postgres" | head -1)" \
+                pg_isready -q -U keycloakdbuser -d keycloakdb > /dev/null 2>&1; then
+              echo "postgres ready after ${i} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "postgres did not become ready within 120s" >&2
+          exit 1
+
+      - name: Print Docker Compose services status
+        run: docker ps
+
+      - name: Run backup/restore E2E tests
+        run: ./tests/e2e-backup-restore.sh
 
       - name: Show container logs on failure
         if: failure()

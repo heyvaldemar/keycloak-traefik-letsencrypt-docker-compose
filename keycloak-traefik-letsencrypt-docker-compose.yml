@@ -170,23 +170,31 @@ services:
     #     accidentally delete files with unrelated names.
     #   - PRUNE_DAYS=0 disables pruning entirely (guard against the "PRUNE_DAYS=0
     #     deletes everything" misconfiguration).
+    #
+    # `$$VAR` / `$$(...)` escapes are required so docker compose does NOT
+    # interpolate these — they must be resolved by the container shell at
+    # runtime from the environment passed via the `environment:` block below.
+    # Local variables ($$BACKUP_FILE, $$SIZE, $$(date ...)) are container-shell
+    # constructs with no compose-file equivalent; without the double-dollar
+    # escape compose substitutes them with empty strings and the backup loop
+    # produces zero-byte files at an empty path.
     command: >-
       sh -c 'set -o pipefail;
-      sleep "$KEYCLOAK_BACKUP_INIT_SLEEP";
+      sleep "$$KEYCLOAK_BACKUP_INIT_SLEEP";
       while true; do
-        BACKUP_FILE="$KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date +%Y-%m-%d_%H-%M).gz";
-        echo "[$(date -Iseconds)] Starting backup to $BACKUP_FILE";
-        if pg_dump -h postgres -p 5432 -d "$KEYCLOAK_DB_NAME" -U "$KEYCLOAK_DB_USER" | gzip > "$BACKUP_FILE"; then
-          SIZE=$(stat -c %s "$BACKUP_FILE" 2>/dev/null || echo ?);
-          echo "[$(date -Iseconds)] Backup OK: $BACKUP_FILE ($SIZE bytes)";
+        BACKUP_FILE="$$KEYCLOAK_POSTGRES_BACKUPS_PATH/$$KEYCLOAK_POSTGRES_BACKUP_NAME-$$(date +%Y-%m-%d_%H-%M-%S).gz";
+        echo "[$$(date -Iseconds)] Starting backup to $$BACKUP_FILE";
+        if pg_dump -h postgres -p 5432 -d "$$KEYCLOAK_DB_NAME" -U "$$KEYCLOAK_DB_USER" | gzip > "$$BACKUP_FILE"; then
+          SIZE=$$(stat -c %s "$$BACKUP_FILE" 2>/dev/null || echo ?);
+          echo "[$$(date -Iseconds)] Backup OK: $$BACKUP_FILE ($$SIZE bytes)";
         else
-          echo "[$(date -Iseconds)] Backup FAILED — renaming partial file to .failed for diagnosis" >&2;
-          mv "$BACKUP_FILE" "${BACKUP_FILE}.failed" 2>/dev/null || true;
+          echo "[$$(date -Iseconds)] Backup FAILED — renaming partial file to .failed for diagnosis" >&2;
+          mv "$$BACKUP_FILE" "$${BACKUP_FILE}.failed" 2>/dev/null || true;
         fi;
-        if [ "${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
-          find "$KEYCLOAK_POSTGRES_BACKUPS_PATH" -type f -name "${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz" -mtime "+${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}" -delete;
+        if [ "$${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$$KEYCLOAK_POSTGRES_BACKUPS_PATH" -type f -name "$${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz" -mtime "+$${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}" -delete;
         fi;
-        sleep "$KEYCLOAK_BACKUP_INTERVAL";
+        sleep "$$KEYCLOAK_BACKUP_INTERVAL";
       done'
     volumes:
       - keycloak-postgres-backup:/var/lib/postgresql/data

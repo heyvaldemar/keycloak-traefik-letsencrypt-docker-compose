@@ -14,6 +14,7 @@
 - [Production checklist](#production-checklist)
 - [Backups](#backups)
 - [Restoring a database backup](#restoring-a-database-backup)
+- [Testing](#testing)
 - [Security Notes](#security-notes)
 - [About the maintainer](#about-the-maintainer)
 
@@ -33,7 +34,7 @@ This repository deploys **Keycloak** behind **Traefik** with automatic **Let's E
 | One-command restore script | ✅ | Manual `pg_restore` | Manual | Rare |
 | Upstream images pinned by `sha256` digest | ✅ | N/A | Depends on chart | Rare |
 | Dependabot-tracked weekly updates | ✅ | N/A | Depends | Rare |
-| CI-verified deployment on every push | ✅ | N/A | Varies | Rare |
+| CI-verified deployment + backup/restore on every push | ✅ | N/A | Varies | Rare |
 | Credentials via env (never committed) | ✅ | N/A | K8s Secrets | Often committed plaintext |
 
 Four moving parts (Traefik + Keycloak + Postgres + backups). No hidden complexity, no Kubernetes prerequisites, no manual certificate management.
@@ -134,8 +135,8 @@ docker compose -p keycloak logs backups | tail -20
 Expected output — one timestamped line per backup cycle:
 
 ```
-[2026-04-23T03:00:01+00:00] Starting backup to /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00.gz
-[2026-04-23T03:00:03+00:00] Backup OK: /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00.gz (47382 bytes)
+[2026-04-23T03:00:01+00:00] Starting backup to /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00-01.gz
+[2026-04-23T03:00:03+00:00] Backup OK: /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00-01.gz (47382 bytes)
 ```
 
 A `Backup FAILED` line (with the partial file renamed to `.failed`) is your signal that something is broken — typically the postgres container is unhealthy, the backup volume filled up, or the DB credentials were rotated without updating the backups container environment.
@@ -182,6 +183,28 @@ The script uses the `PGPASSWORD` inherited from the backups container, so no cre
 | **RTO** (typical restore time) | 1-3 minutes on a small DB; scales with DB size | Keep Keycloak state lean (realms + clients only, ship audit logs elsewhere) |
 | **Backup retention** | 7 days (one `PRUNE_DAYS`) | Increase `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` |
 | **Pre-restore snapshot** | Automatic before every restore, kept at `/tmp/pre-restore-*.gz` inside the backups container | — |
+
+## Testing
+
+The [Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs end-to-end backup + restore tests on every push, every pull request, and every Monday at 06:00 UTC. The `backup-restore-e2e` job boots the full compose stack with ephemeral credentials and short backup intervals (`INIT_SLEEP=10s`, `INTERVAL=30s`, `PRUNE_DAYS=7`) and exercises seven scenarios:
+
+1. **`.env` required** — `docker compose config` fails cleanly without `.env`, guarding the `${VAR:?...}` compose syntax.
+2. **Backup created** — a `.gz` appears in the backups volume with size > 0.
+3. **Backup integrity** — `gunzip -t` on the backup exits zero.
+4. **Backup contents valid** — decompressed SQL contains `PostgreSQL database dump` header and `CREATE TABLE`/`CREATE SCHEMA`.
+5. **Backup failure detected** — stopping postgres forces a failed cycle; a `*.failed` file and `Backup FAILED` log line are produced.
+6. **Restore roundtrip** — inserting a marker row, restoring an earlier backup, and asserting the marker is gone proves the backup is genuinely restorable (not a no-op).
+7. **Prune removes old** — a fake file with 14-day-old mtime is deleted on the next prune cycle; recent backups are preserved.
+
+Run the same tests locally:
+
+```bash
+# Bring the stack up first, with short backup intervals in .env — see tests/README.md
+docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d
+./tests/e2e-backup-restore.sh
+```
+
+A green [`backup-restore-e2e`](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) run is the authoritative proof that the backup + restore flow works end-to-end on every push. If you deploy this template and hit an unexpected issue, compare the green CI run's logs to your own — most "doesn't work" cases trace to DNS propagation, firewall rules, hostname mismatches, or a customised `.env` that silently breaks a variable the tests cover.
 
 ## Security Notes
 
