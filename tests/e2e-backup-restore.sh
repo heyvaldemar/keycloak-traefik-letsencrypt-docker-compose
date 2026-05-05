@@ -295,8 +295,15 @@ test_restore_roundtrip() {
     return 1
   fi
 
-  echo "  restoring baseline (dropdb + createdb + gunzip | psql)"
-  if ! backups_sh "dropdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
+  echo "  restoring baseline (dropdb --force + createdb + gunzip | psql)"
+  # `--force` is required (Postgres 13+; available in postgres:16) because
+  # Keycloak keeps an active connection to keycloakdb via its JDBC pool.
+  # Without it, dropdb fails with "database ... is being accessed by other
+  # users". The production restore script (keycloak-restore-database.sh)
+  # avoids the race by stopping Keycloak first; this test exercises the
+  # underlying primitives directly and uses --force to terminate live
+  # backends instead.
+  if ! backups_sh "dropdb --force -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
       && createdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
       && gunzip -c $baseline | psql -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME > /dev/null"; then
     fail "restore commands failed"
