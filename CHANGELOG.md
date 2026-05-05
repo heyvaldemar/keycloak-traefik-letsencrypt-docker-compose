@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`test_restore_roundtrip` race against the Keycloak DB pool.** The test
+  ran `dropdb` directly against `keycloakdb` while the live Keycloak
+  service still held connections through its JDBC pool. On runners where
+  Keycloak's startup happened to land before the test reached the drop,
+  Postgres rejected the operation with `database "keycloakdb" is being
+  accessed by other users`. Passed intermittently in earlier CI runs
+  because Keycloak's connection-pool establishment timing varied; surfaced
+  as a hard failure on the 2026-05-04 weekly cron. Fix: pass `--force` to
+  `dropdb` (Postgres 13+; available in `postgres:16`), which terminates
+  active backends before dropping the database. The production restore
+  script (`keycloak-restore-database.sh`) sidesteps the race by stopping
+  Keycloak first; this test exercises the underlying primitives directly,
+  so `--force` is the appropriate equivalent. No change to the test's
+  semantic — the assertion that the marker row is absent after restore is
+  unchanged.
 - **Backup filename collision at sub-minute intervals.** Backup filenames
   use only minute granularity
   (`keycloak-postgres-backup-YYYY-MM-DD_HH-MM.gz`), so two cycles inside
