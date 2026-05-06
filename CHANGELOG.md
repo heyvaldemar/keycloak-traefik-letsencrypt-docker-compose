@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.0.0] - 2026-05-06
+
+First semver release. Stable reference point for downstream production pinning. Brings the repo to full compliance with [`self-host-repo-hardening-runbook` v1.3.0+](https://github.com/heyvaldemar/self-host-repo-hardening-runbook) — the canonical Compose-stack reference implementation across the augmented eight-phase standard.
+
+### Changed (BREAKING for stacks with custom modifications)
+
+- **Container hardening (Phase 7)** applied to every service per [self-host-repo-hardening-runbook → Phase 7](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/RUNBOOK.md#phase-7--container-security-context--resource-limits):
+  - `security_opt: no-new-privileges:true` on all four services.
+  - `cap_drop: [ALL]` on all four services with minimal `cap_add` per service:
+    - `postgres`: `CHOWN`, `DAC_READ_SEARCH`, `FOWNER`, `SETGID`, `SETUID` (needed by `docker-entrypoint.sh` to chown the data dir on first boot and `gosu` to drop to the postgres user).
+    - `traefik`: `NET_BIND_SERVICE` (needed to bind to ports 80/443 even as root once `cap_drop` strips it).
+    - `keycloak`, `backups`: no `cap_add` — neither service needs any Linux capability for normal operation.
+  - `read_only: true` with explicit `tmpfs` mounts on `postgres` (`/tmp` + `/var/run/postgresql`), `traefik` (`/tmp`), `backups` (`/tmp`). NOT applied to `keycloak` — see the keycloak-service comment block in the compose file for the rationale (upstream image auto-runs `kc.sh build` at start, which writes to `/opt/keycloak/lib/quarkus/`; making this work under read_only requires either a custom-built image with `--optimized` flag or tmpfs covering the entire `/opt/keycloak/lib` tree, neither of which fits a Compose-template repo).
+  - Resource limits (`deploy.resources.limits.memory` + `cpus`) on every service. Reservations also declared.
+  - Explicit `user:` directive where the upstream image supports it: `keycloak` runs as `1000:0`, `traefik` as `0:0`. `postgres` and `backups` leave `user:` unset because the official postgres image's `docker-entrypoint.sh` handles user-switching internally (drops to uid 999 via `gosu` after chown'ing the data dir; forcing `user:` at compose-level fights that design).
+- **BREAKING note:** Stacks running custom modifications that conflict with the hardened security context (e.g., extension volumes that need write access, custom binaries that use elevated capabilities) may experience startup failures. Standard deployments without modifications upgrade cleanly via `docker compose pull && docker compose up -d`. Migration path for incompatible customisations: pin to the previous commit (`git checkout 13e5a7b`) until your overrides are audited.
+
+### Added
+
+- README "Container hardening" section documenting the Phase 7 controls applied per service.
+- README "Standardization reference" section cross-linking to the canonical runbook plus the eight-phase summary.
+- TOC entries for both new sections.
+
+### Validation
+
+- All four services start healthy under Phase 7 hardening (verified locally on Docker Desktop arm64 + ubuntu-24.04 in CI).
+- `backup-restore-e2e` job's seven-test suite passes against the hardened compose: `test_env_required`, `test_backup_created`, `test_backup_gunzip_ok`, `test_backup_sql_valid`, `test_backup_failure_detected`, `test_restore_roundtrip`, `test_prune_removes_old`.
+- Production restore flow (stop keycloak → pre-restore snapshot → dropdb + createdb + restore → start keycloak → wait healthy → sanity query) verified end-to-end against a live stack with a marker-row insert pre-restore and absent-after-restore assertion. Keycloak reports healthy after restart with 88 tables in the public schema.
+
+### Acknowledgments
+
+- Phase 7 controls codified in [self-host-repo-hardening-runbook v1.3.0](https://github.com/heyvaldemar/self-host-repo-hardening-runbook).
+- Audit identifying the Phase 7 gap on this repo: [`audits/keycloak-2026-04-28.md`](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/audits/keycloak-2026-04-28.md) in the runbook repo.
+
+---
+
+## Pre-1.0 changes (rolled up from previous `[Unreleased]` block)
+
+The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04-23) and the v1.0.0 cut today (2026-05-06). They are preserved here for narrative continuity:
+
 ### Fixed
 - **`test_restore_roundtrip` race against the Keycloak DB pool.** The test
   ran `dropdb` directly against `keycloakdb` while the live Keycloak
@@ -190,4 +232,5 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 - **2021–2025:** iterative updates to image tags (Traefik 1.x → 3.x, Keycloak 15.x → 26.x, PostgreSQL), healthcheck hardening, backup container with pruning.
 - **2026-04:** alignment with the supply-chain hardening track established by [heyvaldemar/aws-kubectl-docker](https://github.com/heyvaldemar/aws-kubectl-docker).
 
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/commits/main
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.0.0
