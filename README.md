@@ -16,6 +16,8 @@
 - [Restoring a database backup](#restoring-a-database-backup)
 - [Testing](#testing)
 - [Security Notes](#security-notes)
+- [Container hardening](#container-hardening)
+- [Standardization reference](#standardization-reference)
 - [About the maintainer](#about-the-maintainer)
 
 This repository deploys **Keycloak** behind **Traefik** with automatic **Let's Encrypt TLS**, backed by **PostgreSQL**, with a scheduled **backup container** and a companion **restore script**. One `docker compose up` away from a production-shaped identity-and-access-management service at `https://your-domain`.
@@ -215,6 +217,36 @@ A green [`backup-restore-e2e`](https://github.com/heyvaldemar/keycloak-traefik-l
 - CI runs on every push and every Monday to catch upstream drift.
 
 See [`SECURITY.md`](SECURITY.md) for the vulnerability disclosure process.
+
+## Container hardening
+
+This stack ships with production-grade container hardening (per [`self-host-repo-hardening-runbook` → Phase 7](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/RUNBOOK.md#phase-7--container-security-context--resource-limits)) applied to every service:
+
+- **`security_opt: no-new-privileges:true`** — prevents privilege escalation via setuid binaries even if a process inside escapes its initial capability set.
+- **`cap_drop: [ALL]`** — drops every Linux capability. Each service adds back only what it genuinely needs:
+  - `postgres`: `CHOWN`, `DAC_READ_SEARCH`, `FOWNER`, `SETGID`, `SETUID` — needed by `docker-entrypoint.sh` to chown the data dir on first boot and `gosu` to drop to the postgres user.
+  - `traefik`: `NET_BIND_SERVICE` — needed to bind to ports 80/443.
+  - `keycloak`, `backups`: nothing.
+- **`read_only: true`** with explicit `tmpfs` mounts on postgres, traefik, and backups. Keycloak is intentionally NOT read-only — see the comment block on the keycloak service in the compose file for the rationale (upstream image auto-runs `kc.sh build` at start, which writes to `/opt/keycloak/lib/quarkus/`).
+- **Resource limits** (`deploy.resources.limits.memory` + `cpus`) on every service. Prevents one runaway service from starving the host.
+- **Non-root users** declared explicitly: `keycloak` runs as `1000:0`, `traefik` as `0:0` (its image has no non-root user; root + `cap_drop: ALL` + `cap_add: NET_BIND_SERVICE` is the minimum-privilege configuration). `postgres` and `backups` leave `user:` unset — the official postgres image's `docker-entrypoint.sh` handles user-switching internally (drops to uid 999 via `gosu` after the initial chown).
+
+Tested end-to-end as part of the v1.0.0 release. The `backup-restore-e2e` CI job validates that backup write + dropdb + createdb + restore work under the hardened context on every push.
+
+## Standardization reference
+
+The patterns in this stack are codified as a reusable standard at [`heyvaldemar/self-host-repo-hardening-runbook` → `RUNBOOK.md`](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/RUNBOOK.md). If you maintain a similar Compose-stack repo and want to follow the same standard, the runbook covers eight phases:
+
+- **Phase 0** — Security audit + `.env` hygiene
+- **Phase 1** — Community files (LICENSE, SECURITY.md, CHANGELOG.md, Dependabot)
+- **Phase 2** — CI workflow hardening (commit-SHA pins, per-job permissions, weekly cron)
+- **Phase 3** — Upstream image digest pinning
+- **Phase 4** — README rewrite (evaluator-first structure)
+- **Phase 5** — OpenSSF Scorecard
+- **Phase 6** — CI lint + upstream Trivy scan
+- **Phase 7** — Container security context + resource limits (this README's "Container hardening" section)
+
+Plus an optional Architecture Decision Records (ADR) phase for flagship repos. Nine common pitfalls grounded in production iteration history. Helper scripts for bulk operations (digest resolution, action-tag dereferencing, phase-1/5 application).
 
 ---
 

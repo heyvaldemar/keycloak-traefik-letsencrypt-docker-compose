@@ -28,6 +28,33 @@ services:
       retries: 3
       start_period: 60s
     restart: unless-stopped
+    # Phase 7 hardening (self-host-repo-hardening-runbook RUNBOOK.md → Phase 7).
+    # `user:` deliberately unset for postgres — the official postgres image's
+    # docker-entrypoint.sh handles user-switching internally (drops to uid 999
+    # via gosu after initial chown). Forcing `user:` at compose-level fights
+    # that design and breaks first-boot data-dir initialisation.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+        reservations:
+          memory: 128m
+          cpus: "0.25"
 
   keycloak:
     image: ${KEYCLOAK_IMAGE_TAG:?set in .env - see .env.example}
@@ -87,6 +114,38 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Phase 7 hardening (self-host-repo-hardening-runbook RUNBOOK.md → Phase 7).
+    # The quay.io/keycloak/keycloak image runs as uid=1000 gid=0 by default
+    # (OpenShift SCC `restricted-v2` compatible). Declaring it explicitly here
+    # makes the security stance unambiguous in the compose file.
+    #
+    # NOTE: `read_only: true` is intentionally NOT applied here. The upstream
+    # quay.io/keycloak/keycloak image auto-runs `kc.sh build` on first start
+    # whenever env-driven config differs from the pre-built defaults — it
+    # always does in our case because we use a Postgres backend (KC_DB=postgres)
+    # rather than the image's default H2. The build writes the rebuilt Quarkus
+    # runner to /opt/keycloak/lib/quarkus/, which a read-only rootfs blocks
+    # with java.nio.file.ReadOnlyFileSystemException. The two ways to make
+    # read_only work are: (1) build a custom image with `kc.sh build` baked
+    # in and start with `--optimized`, or (2) tmpfs the entire /opt/keycloak/lib
+    # tree (~500MB RAM). Neither fits a Compose-template repo that downstream
+    # users clone and deploy as-is. The other Phase 7 controls
+    # (no-new-privileges, cap_drop, non-root user, resource limits) still
+    # apply and shrink the blast radius substantially without the
+    # custom-image complexity.
+    user: "1000:0"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.5"
+        reservations:
+          memory: 256m
+          cpus: "0.5"
 
   traefik:
     image: ${TRAEFIK_IMAGE_TAG:?set in .env - see .env.example}
@@ -159,6 +218,31 @@ services:
       # Pass the original Host header to the backend
       - "traefik.http.services.dashboard.loadbalancer.passhostheader=true"
     restart: unless-stopped
+    # Phase 7 hardening (self-host-repo-hardening-runbook RUNBOOK.md → Phase 7).
+    # Traefik runs as root by default (the upstream image has no non-root user).
+    # `user: "0:0"` declares this explicitly. cap_drop: ALL strips every Linux
+    # capability — including NET_BIND_SERVICE which root would otherwise have
+    # implicitly — so we add it back so traefik can bind to ports 80/443.
+    # ACME storage stays on the named volume (writable); read_only with /tmp
+    # tmpfs handles everything else.
+    user: "0:0"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+        reservations:
+          memory: 64m
+          cpus: "0.1"
 
   backups:
     image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
@@ -214,3 +298,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Phase 7 hardening (self-host-repo-hardening-runbook RUNBOOK.md → Phase 7).
+    # Sidecar runs the postgres image. `user:` deliberately unset (same reason
+    # as postgres). Backup loop is `pg_dump | gzip > file` — TCP connection
+    # to postgres, write to the named volume — no special caps needed.
+    # No healthcheck: this is a forever-loop sidecar, not a request/response
+    # service; observability is via `docker compose logs backups`.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+        reservations:
+          memory: 64m
+          cpus: "0.1"
