@@ -7,6 +7,7 @@
 ## Contents
 
 - [Why this stack?](#why-this-stack)
+- [Prerequisites](#prerequisites)
 - [Getting started](#getting-started)
 - [Features](#features)
   - [Typical use cases](#typical-use-cases)
@@ -41,6 +42,18 @@ This repository deploys **Keycloak** behind **Traefik** with automatic **Let's E
 
 Four moving parts (Traefik + Keycloak + Postgres + backups). No hidden complexity, no Kubernetes prerequisites, no manual certificate management.
 
+## Prerequisites
+
+Before you start, you need:
+
+- **A Linux server** with a public IP. Tested on Ubuntu 22.04 LTS+ and Debian 12+; should work on any distro that runs current Docker. Local Mac/Windows works for dev; production is Linux.
+- **Docker Engine 24+ and Docker Compose 2.20+.** Quick check: `docker version` and `docker compose version`. If you don't have Docker yet: [official install guide](https://docs.docker.com/engine/install/).
+- **A domain you control,** with two `A` records (or `CNAME`s) pointing at your server's public IP — one for Keycloak (e.g. `keycloak.example.com`), one for the Traefik dashboard (e.g. `traefik.keycloak.example.com`). DNS must propagate before deploy or Let's Encrypt's TLS-ALPN challenge will fail.
+- **Ports 80 and 443 open** on the server's firewall and not bound by another service. Quick check: `sudo ss -ltn '( sport = :80 or sport = :443 )'` should be empty.
+- **~2 GB free RAM and 1 free CPU** for the running stack. ~500 MB of disk for the images plus whatever your backup retention requires.
+
+That's it. No Kubernetes, no separate database server, no certbot setup.
+
 ## Getting started
 
 ```bash
@@ -65,7 +78,34 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up
 
 Within a minute or two, both `https://${KEYCLOAK_HOSTNAME}` (Keycloak UI) and `https://${TRAEFIK_HOSTNAME}` (Traefik dashboard, basic-auth protected) are live with fresh Let's Encrypt certificates.
 
-Apply `.env` or compose-file changes:
+### What success looks like
+
+```bash
+# All four services should report as healthy:
+docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak ps
+# Expected: postgres, keycloak, traefik all show "(healthy)"; backups shows "Up"
+
+# Traefik should have issued a Let's Encrypt cert within ~30s of first start:
+docker compose -p keycloak logs traefik | grep -i "adding certificate"
+# Expected: "Adding certificate for domain(s) keycloak.example.com"
+
+# Keycloak responds on its public URL:
+curl -fsS -o /dev/null -w "%{http_code}\n" "https://${KEYCLOAK_HOSTNAME}/health/ready"
+# Expected: 200
+
+# First backup lands in the volume after KEYCLOAK_BACKUP_INIT_SLEEP (default 30m):
+docker compose -p keycloak logs backups | tail -3
+# Expected: a "Backup OK: ... (NN bytes)" line
+```
+
+### Common first-deploy issues
+
+- **Cert issuance fails / no `adding certificate` log line.** Either DNS hasn't propagated to your server's IP yet, or port 80 isn't reachable from the public internet. Confirm with `dig +short ${KEYCLOAK_HOSTNAME}` (should match server IP) and `curl -I http://${KEYCLOAK_HOSTNAME}` from outside the server (should not time out).
+- **`docker compose up` fails with `set in .env`.** A required variable is empty in `.env`. The error message lists the variable. Most likely candidates: `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `TRAEFIK_BASIC_AUTH`. Generate per the comments in `.env.example`.
+- **`network keycloak-network not found`.** Step 2 (the `docker network create ...` commands) was skipped. Run them and retry.
+- **Keycloak container restarts in a loop with `Build failed due to errors`.** This is rare and means an env var combo isn't supported by the upstream image's auto-build. Check `docker compose -p keycloak logs keycloak` for the specific error and reach out via [Issues](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/issues).
+
+### Apply `.env` or compose-file changes
 
 ```bash
 docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d --force-recreate
