@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.1.0] - 2026-08-30
+
+Security release. Every deployment pinned to v1.0.0 runs Keycloak 26.2.5,
+which is affected by CVE-2026-18963 (CVSS 9.1) and eight further High-severity
+fixes shipped upstream since. Upgrade path for standard deployments:
+`git pull && docker compose pull && docker compose up -d` — Keycloak migrates
+its schema forward automatically on first start. Take a database backup first
+(the `backups` sidecar gives you one at most `KEYCLOAK_BACKUP_INTERVAL` old);
+Keycloak does not support schema rollback, so the way back from a failed
+upgrade is `keycloak-restore-database.sh` with the previous image pin.
+
 ### Security
 
 - **Keycloak bumped 26.2.5 → 26.7.2** (`quay.io/keycloak/keycloak:26.7.2@sha256:9d1f1b2b…`).
@@ -268,5 +281,6 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 - **2021–2025:** iterative updates to image tags (Traefik 1.x → 3.x, Keycloak 15.x → 26.x, PostgreSQL), healthcheck hardening, backup container with pruning.
 - **2026-04:** alignment with the supply-chain hardening track established by [heyvaldemar/aws-kubectl-docker](https://github.com/heyvaldemar/aws-kubectl-docker).
 
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.0.0
