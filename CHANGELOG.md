@@ -7,7 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Security
+
+- **Keycloak bumped 26.2.5 → 26.7.2** (`quay.io/keycloak/keycloak:26.7.2@sha256:9d1f1b2b…`).
+  Picks up every CRITICAL/HIGH fix published since 26.2.5, including
+  CVE-2026-18963 (unauthenticated account takeover via password-reset flow
+  bypass, CVSS 9.1, fixed in 26.7.2) and the 26.5.x/26.6.x authentication- and
+  authorization-bypass series. Reported in issue #40. No compose-file changes
+  required — `KC_BOOTSTRAP_ADMIN_*`, health endpoint on port 9000, and the
+  Phase 7 hardening all behave identically on 26.7.2.
+- **Traefik bumped 3.2 → 3.7** (`traefik:3.7@sha256:9c2a54d8…`). Traefik
+  3.2's vendored Docker client cannot talk to Docker Engine 29 — the docker
+  provider fails with `Error response from daemon: ""` in a retry loop and
+  no routers are ever created, so the stack silently serves 404s on hosts
+  running current Docker. Verified locally: 3.2 fails against Docker Desktop
+  29.6.1, 3.6+ works. All Traefik flags used by this template are unchanged
+  across 3.2 → 3.7.
+- **`postgres:16` digest refreshed** (`71e27bf6… → f1c3376c…`) — upstream had
+  repushed the tag; the pinned digest was stale.
+
+### Fixed
+
+- **Image-pin tracking actually works now.** The previous release claimed
+  Dependabot's `docker` ecosystem watched the image pins. It never did:
+  Dependabot only parses Dockerfiles and compose files with literal `image:`
+  values, while this repo pins images in `.env.example` behind compose
+  variables. That gap is how the Keycloak pin sat on 26.2.5 through five
+  upstream security releases (issue #40). Replaced with a weekly
+  `check-pin-freshness` CI job that re-resolves each pinned tag against its
+  registry (digest drift) and compares the pinned Keycloak version and
+  Traefik minor line against the latest upstream GitHub releases — any
+  mismatch fails the run and notifies the maintainer. The dead `docker` ecosystem entry is removed from
+  `dependabot.yml` with a comment explaining why.
+- **Image pins now live in exactly one file.** The pins were previously
+  duplicated in four places (`.env.example`, the Trivy scan matrix, and two
+  CI ephemeral `.env` heredocs) — a bump had to hit all four. The Trivy
+  matrix and both CI `.env` generation steps now read the pins from
+  `.env.example` at runtime.
 
 ## [1.0.0] - 2026-05-06
 

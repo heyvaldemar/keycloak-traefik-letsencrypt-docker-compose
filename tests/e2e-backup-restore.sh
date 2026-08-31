@@ -210,14 +210,22 @@ test_backup_gunzip_ok() {
 }
 
 test_backup_sql_valid() {
-  local first
-  first=$(list_backups | head -1)
-  if [[ -z "$first" ]]; then
+  # Sample the NEWEST backup, not the oldest. The very first backup fires
+  # INIT_SLEEP (10s) after the backups container starts, which can land
+  # before Keycloak's Liquibase migration has created any tables — an empty
+  # but structurally valid dump. CI happens to dodge this because
+  # setup_marker_table runs before the first dump, but any run that starts
+  # the suite later (e.g. local validation against an already-running stack)
+  # samples an empty oldest dump and fails spuriously. The newest backup is
+  # guaranteed to postdate both the marker table and Keycloak's schema.
+  local newest
+  newest=$(list_backups | tail -1)
+  if [[ -z "$newest" ]]; then
     fail "no backups available"
     return 1
   fi
   local sample
-  sample=$(backups_sh "gunzip -c $first | head -50")
+  sample=$(backups_sh "gunzip -c $newest | head -50")
   if ! echo "$sample" | grep -q "PostgreSQL database dump"; then
     fail "expected 'PostgreSQL database dump' header in first 50 lines"
     echo "--- got: ---" >&2

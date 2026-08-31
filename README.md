@@ -113,7 +113,7 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up
 
 ## Features
 
-- **Keycloak** latest stable (26.2.5) with PostgreSQL 16 backing store.
+- **Keycloak** latest stable (26.7.2) with PostgreSQL 16 backing store.
 - **Traefik v3** reverse proxy with automatic HTTP→HTTPS redirect at entry-point level and Let's Encrypt TLS-ALPN challenge for cert issuance.
 - **Basic-auth protected Traefik dashboard** on a separate hostname.
 - **Prometheus metrics** exposed by Traefik (`--metrics.prometheus`) — wire your own scraper.
@@ -140,7 +140,7 @@ This repository is a **deployment template**, not a custom Docker image. It orch
 
 All three are pinned to `tag@sha256:<digest>` in `.env.example`. Compose pulls by digest, not by tag. Two users deploying this repo on different days get byte-identical image manifests regardless of upstream repushes.
 
-Dependabot's `docker` ecosystem watches each digest and opens a weekly PR when any of them changes. CI's **Deployment Verification** workflow runs on every push, pull request, and every Monday at 06:00 UTC — it stands up the full compose stack with ephemeral credentials, validates HTTPS routing + Traefik dashboard smoke, and tears down. Drift in upstream images surfaces within a week instead of on the next user deploy.
+The weekly `check-pin-freshness` CI job re-resolves each pinned tag against its registry and compares the pinned Keycloak and Traefik versions against the latest upstream releases — any drift fails the run and notifies the maintainer. (Dependabot's `docker` ecosystem cannot see these pins: they live in `.env.example` behind compose variables, not in a Dockerfile.) CI's **Deployment Verification** workflow runs on every push, pull request, and every Monday at 06:00 UTC — it stands up the full compose stack with ephemeral credentials, validates HTTPS routing + Traefik dashboard smoke, and tears down. The ephemeral CI `.env` and the Trivy scan matrix both read their image pins from `.env.example`, so CI always exercises exactly the pins the template ships.
 
 GitHub Actions are also pinned by commit SHA with `# vX.Y.Z` version comments. Dependabot's `github-actions` ecosystem keeps those fresh.
 

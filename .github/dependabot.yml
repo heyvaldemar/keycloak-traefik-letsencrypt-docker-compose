@@ -14,14 +14,10 @@ updates:
           - "minor"
           - "patch"
 
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    groups:
-      docker-minor-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
+# NOTE: no `docker` ecosystem here on purpose. Dependabot's docker ecosystem
+# only parses Dockerfiles and compose files with literal `image:` values —
+# this repo's compose file uses `image: ${VAR}` with the pins living in
+# .env.example, which Dependabot cannot see. The earlier `docker` entry
+# scanned nothing and quietly let the Keycloak pin go stale (issue #40).
+# Pin freshness is enforced instead by the weekly `check-pin-freshness` job
+# in .github/workflows/deployment-verification.yml.
