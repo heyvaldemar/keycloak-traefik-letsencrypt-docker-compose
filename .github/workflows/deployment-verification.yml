@@ -73,6 +73,17 @@ jobs:
         include:
           - name: postgres
             env_var: KEYCLOAK_POSTGRES_IMAGE_TAG
+            # Two persistent noise sources in the official postgres image,
+            # neither actionable from this repo:
+            #   - gosu: Go-stdlib CVEs in the privilege-drop helper; fixed
+            #     only by upstream image rebuilds, which check-pin-freshness
+            #     surfaces as digest drift anyway.
+            #   - ssl-cert-snakeoil.key: Debian's placeholder self-signed
+            #     key, flagged by the secret scanner; it is a well-known
+            #     dummy, not a leaked credential.
+            # Paths listed with and without a leading slash because Trivy
+            # reports layer paths in both forms depending on scanner.
+            skip_files: "usr/local/bin/gosu,/usr/local/bin/gosu,etc/ssl/private/ssl-cert-snakeoil.key,/etc/ssl/private/ssl-cert-snakeoil.key"
           - name: traefik
             env_var: TRAEFIK_IMAGE_TAG
           - name: keycloak
@@ -102,6 +113,7 @@ jobs:
           output: trivy-${{ matrix.name }}.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          skip-files: ${{ matrix.skip_files }}
 
       - name: Upload Trivy SARIF (${{ matrix.name }}) to GitHub Security
         uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
