@@ -66,25 +66,38 @@ jobs:
     strategy:
       # One job per upstream image — findings show up separately in the
       # GitHub Security tab under distinct categories (trivy-postgres,
-      # trivy-traefik, trivy-keycloak).
+      # trivy-traefik, trivy-keycloak). Image refs are read from
+      # .env.example at runtime so the pins live in exactly one file.
       fail-fast: false
       matrix:
         include:
           - name: postgres
-            image: "postgres:16@sha256:71e27bf60b70bded003791b5573f8b808365613f341df20ffcf0c1ed7bc13ddf"
+            env_var: KEYCLOAK_POSTGRES_IMAGE_TAG
           - name: traefik
-            image: "traefik:3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9"
+            env_var: TRAEFIK_IMAGE_TAG
           - name: keycloak
-            image: "quay.io/keycloak/keycloak:26.2.5@sha256:4883630ef9db14031cde3e60700c9a9a8eaf1b5c24db1589d6a2d43de38ba2a9"
+            env_var: KEYCLOAK_IMAGE_TAG
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Read pinned ${{ matrix.name }} image from .env.example
+        id: pin
+        env:
+          ENV_VAR: ${{ matrix.env_var }}
+        run: |
+          image="$(grep -E "^${ENV_VAR}=" .env.example | cut -d= -f2-)"
+          if [ -z "$image" ]; then
+            echo "${ENV_VAR} not found in .env.example" >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
       - name: Trivy scan of ${{ matrix.name }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ matrix.image }}
+          image-ref: ${{ steps.pin.outputs.image }}
           format: sarif
           output: trivy-${{ matrix.name }}.sarif
           severity: CRITICAL,HIGH
@@ -95,6 +108,79 @@ jobs:
         with:
           sarif_file: trivy-${{ matrix.name }}.sarif
           category: trivy-${{ matrix.name }}
+
+  check-pin-freshness:
+    name: Check pinned images for upstream drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Weekly cron + manual dispatch only. A new upstream release is not
+    # actionable inside an unrelated PR, and failing every PR the day a new
+    # Keycloak ships trains everyone to ignore red CI. On the cron the
+    # failure lands as a workflow-failure notification to the maintainer,
+    # which is the point: a stale pin must not sit unnoticed. Dependabot's
+    # docker ecosystem cannot see these pins (they live in .env.example
+    # behind compose variables, not in a Dockerfile), so this job is the
+    # actual tracking mechanism.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare pinned digests against what each tag resolves to now
+        run: |
+          status=0
+          for var in TRAEFIK_IMAGE_TAG KEYCLOAK_POSTGRES_IMAGE_TAG KEYCLOAK_IMAGE_TAG; do
+            pin="$(grep -E "^${var}=" .env.example | cut -d= -f2-)"
+            ref="${pin%%@*}"
+            pinned_digest="${pin##*@}"
+            current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
+            if [ "$pinned_digest" != "$current_digest" ]; then
+              echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
+              status=1
+            else
+              echo "${var} OK (${ref})"
+            fi
+          done
+          exit "$status"
+
+      - name: Compare pinned Keycloak version against the latest release
+        run: |
+          pin="$(grep -E '^KEYCLOAK_IMAGE_TAG=' .env.example | cut -d= -f2-)"
+          ref="${pin%%@*}"
+          pinned_version="${ref##*:}"
+          latest="$(curl -fsSL --retry 3 https://api.github.com/repos/keycloak/keycloak/releases/latest | jq -r .tag_name)"
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::Could not determine the latest Keycloak release from the GitHub API"
+            exit 1
+          fi
+          if [ "$pinned_version" != "$latest" ]; then
+            echo "::error::Keycloak pin is behind: pinned ${pinned_version}, latest release is ${latest}"
+            exit 1
+          fi
+          echo "Keycloak pin ${pinned_version} matches the latest release"
+
+      - name: Compare pinned Traefik minor against the latest release
+        run: |
+          pin="$(grep -E '^TRAEFIK_IMAGE_TAG=' .env.example | cut -d= -f2-)"
+          ref="${pin%%@*}"
+          pinned_minor="${ref##*:}"
+          latest="$(curl -fsSL --retry 3 https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"
+          latest="${latest#v}"
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::Could not determine the latest Traefik release from the GitHub API"
+            exit 1
+          fi
+          case "$latest" in
+            "$pinned_minor".*)
+              echo "Traefik pin ${pinned_minor} matches the latest release line (${latest})"
+              ;;
+            *)
+              echo "::error::Traefik pin is behind: pinned minor ${pinned_minor}, latest release is ${latest}"
+              exit 1
+              ;;
+          esac
 
   deploy-and-test:
     name: docker compose up + HTTPS + Traefik dashboard smoke
@@ -127,15 +213,15 @@ jobs:
       - name: Generate test .env with ephemeral credentials
         # The real .env is gitignored. CI generates throwaway credentials so
         # `docker compose up` succeeds without committing secrets to the repo.
+        # Image pins are copied from .env.example so CI always tests exactly
+        # what the template ships — the pins live in one file only.
         run: |
-          cat > .env <<EOF
-          TRAEFIK_IMAGE_TAG=traefik:3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9
+          grep -E '^(TRAEFIK_IMAGE_TAG|KEYCLOAK_POSTGRES_IMAGE_TAG|KEYCLOAK_IMAGE_TAG)=' .env.example > .env
+          cat >> .env <<EOF
           TRAEFIK_LOG_LEVEL=WARN
           TRAEFIK_ACME_EMAIL=ci@example.com
           TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
           TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
-          KEYCLOAK_POSTGRES_IMAGE_TAG=postgres:16@sha256:71e27bf60b70bded003791b5573f8b808365613f341df20ffcf0c1ed7bc13ddf
-          KEYCLOAK_IMAGE_TAG=quay.io/keycloak/keycloak:26.2.5@sha256:4883630ef9db14031cde3e60700c9a9a8eaf1b5c24db1589d6a2d43de38ba2a9
           KEYCLOAK_DB_NAME=keycloakdb
           KEYCLOAK_DB_USER=keycloakdbuser
           KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
@@ -228,14 +314,12 @@ jobs:
         # hostnames here are placeholder — this job never exercises Traefik
         # or Keycloak HTTPS routing (that's deploy-and-test's responsibility).
         run: |
-          cat > .env <<EOF
-          TRAEFIK_IMAGE_TAG=traefik:3.2@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9
+          grep -E '^(TRAEFIK_IMAGE_TAG|KEYCLOAK_POSTGRES_IMAGE_TAG|KEYCLOAK_IMAGE_TAG)=' .env.example > .env
+          cat >> .env <<EOF
           TRAEFIK_LOG_LEVEL=WARN
           TRAEFIK_ACME_EMAIL=ci@example.com
           TRAEFIK_HOSTNAME=traefik.keycloak.ci.example
           TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
-          KEYCLOAK_POSTGRES_IMAGE_TAG=postgres:16@sha256:71e27bf60b70bded003791b5573f8b808365613f341df20ffcf0c1ed7bc13ddf
-          KEYCLOAK_IMAGE_TAG=quay.io/keycloak/keycloak:26.2.5@sha256:4883630ef9db14031cde3e60700c9a9a8eaf1b5c24db1589d6a2d43de38ba2a9
           KEYCLOAK_DB_NAME=keycloakdb
           KEYCLOAK_DB_USER=keycloakdbuser
           KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
