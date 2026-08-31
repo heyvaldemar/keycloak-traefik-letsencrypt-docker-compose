@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.1.1] - 2026-08-31
+
+### Security
+
+- **Keycloak bumped 26.7.2 → 26.7.3**
+  (`quay.io/keycloak/keycloak:26.7.3@sha256:ff4257d0…`). Upstream security
+  release published 2026-08-31 addressing 20 CVEs, including an LDAP
+  certificate hostname-verification bypass, an OIDC unsigned-JWT assertion
+  policy bypass, and authorization bypasses in fine-grained admin
+  permissions. Caught by the weekly `check-pin-freshness` job on its first
+  scheduled run — the exact failure mode issue #40 reported can no longer
+  sit unnoticed. Same upgrade path as v1.1.0: back up, `docker compose
+  pull && up -d`; schema migrates forward automatically.
+
 ## [1.1.0] - 2026-08-30
 
 Security release. Every deployment pinned to v1.0.0 runs Keycloak 26.2.5,
@@ -281,6 +295,7 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 - **2021–2025:** iterative updates to image tags (Traefik 1.x → 3.x, Keycloak 15.x → 26.x, PostgreSQL), healthcheck hardening, backup container with pruning.
 - **2026-04:** alignment with the supply-chain hardening track established by [heyvaldemar/aws-kubectl-docker](https://github.com/heyvaldemar/aws-kubectl-docker).
 
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.0.0

@@ -113,7 +113,7 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up
 
 ## Features
 
-- **Keycloak** latest stable (26.7.2) with PostgreSQL 16 backing store.
+- **Keycloak** latest stable (26.7.3) with PostgreSQL 16 backing store.
 - **Traefik v3** reverse proxy with automatic HTTP→HTTPS redirect at entry-point level and Let's Encrypt TLS-ALPN challenge for cert issuance.
 - **Basic-auth protected Traefik dashboard** on a separate hostname.
 - **Prometheus metrics** exposed by Traefik (`--metrics.prometheus`) — wire your own scraper.
