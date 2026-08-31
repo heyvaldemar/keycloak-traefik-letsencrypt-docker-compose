@@ -1,3 +1,16 @@
+# Image pins live HERE, as interpolation defaults, so `git pull` (or
+# re-downloading this file) delivers the exact version combination this
+# repository has tested — no .env editing required. Setting the matching
+# variable in .env overrides the default for anyone who wants to pin
+# differently; .env itself carries only secrets and deliberate overrides.
+# Design suggested by @chattytak in issue #40 (follow-up).
+# CI (Trivy scans, check-pin-freshness, ephemeral test .env) reads the pins
+# from these three lines — this block is the single source of truth.
+x-images:
+  traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:3.7@sha256:9c2a54d87f76f5c2f5f2682c68394af92fb12c0a2686798d6462a3f84bd78eaf}
+  postgres: &postgres-image ${KEYCLOAK_POSTGRES_IMAGE_TAG:-postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94}
+  keycloak: &keycloak-image ${KEYCLOAK_IMAGE_TAG:-quay.io/keycloak/keycloak:26.7.3@sha256:ff4257d0d64efbe99ed1ddfaf07765cc3c36dc7518bf8324d41961327f441c54}
+
 networks:
   keycloak-network:
     external: true
@@ -12,7 +25,7 @@ volumes:
 
 services:
   postgres:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG:?set in .env - see .env.example}
+    image: *postgres-image
     volumes:
       - keycloak-postgres:/var/lib/postgresql/data
     environment:
@@ -57,7 +70,7 @@ services:
           cpus: "0.25"
 
   keycloak:
-    image: ${KEYCLOAK_IMAGE_TAG:?set in .env - see .env.example}
+    image: *keycloak-image
     command: start
     environment:
       KC_DB: postgres
@@ -148,7 +161,7 @@ services:
           cpus: "0.5"
 
   traefik:
-    image: ${TRAEFIK_IMAGE_TAG:?set in .env - see .env.example}
+    image: *traefik-image
     command:
       # Set the log level (DEBUG, INFO, WARN, ERROR)
       - "--log.level=${TRAEFIK_LOG_LEVEL:-WARN}"
@@ -245,7 +258,7 @@ services:
           cpus: "0.1"
 
   backups:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+    image: *postgres-image
     # Backup loop with failure detection:
     #   - `set -o pipefail` so a pg_dump error fails the pipe even though gzip exits 0.
     #   - Failed dumps are renamed *.failed for post-hoc diagnosis; the loop continues.

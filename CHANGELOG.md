@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.2.0] - 2026-08-31
+
+### Changed
+
+- **Image pins moved into the compose file as interpolation defaults**
+  (`x-images` block, `${VAR:-tag@sha256:…}`), so `git pull` alone delivers
+  the version combination this repository has tested — no manual syncing of
+  `*_IMAGE_TAG` lines into your `.env` after each release. `.env` now
+  carries only secrets and deliberate overrides; setting `TRAEFIK_IMAGE_TAG`,
+  `KEYCLOAK_POSTGRES_IMAGE_TAG`, or `KEYCLOAK_IMAGE_TAG` there still wins
+  over the default, which also means existing deployments change nothing on
+  upgrade until they remove those lines. Design suggested by @chattytak in
+  the issue #40 follow-up. CI (Trivy matrix, `check-pin-freshness`, both
+  ephemeral test `.env` generators) now reads pins from the `x-images`
+  block; `.env.example` documents the override pattern with commented
+  examples.
+
 ## [1.1.1] - 2026-08-31
 
 ### Security
@@ -295,7 +312,8 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 - **2021–2025:** iterative updates to image tags (Traefik 1.x → 3.x, Keycloak 15.x → 26.x, PostgreSQL), healthcheck hardening, backup container with pruning.
 - **2026-04:** alignment with the supply-chain hardening track established by [heyvaldemar/aws-kubectl-docker](https://github.com/heyvaldemar/aws-kubectl-docker).
 
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.0.0

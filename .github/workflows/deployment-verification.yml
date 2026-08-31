@@ -66,8 +66,8 @@ jobs:
     strategy:
       # One job per upstream image — findings show up separately in the
       # GitHub Security tab under distinct categories (trivy-postgres,
-      # trivy-traefik, trivy-keycloak). Image refs are read from
-      # .env.example at runtime so the pins live in exactly one file.
+      # trivy-traefik, trivy-keycloak). Image refs are read from the
+      # compose file's x-images defaults at runtime — single source of truth.
       fail-fast: false
       matrix:
         include:
@@ -93,14 +93,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Read pinned ${{ matrix.name }} image from .env.example
+      - name: Read pinned ${{ matrix.name }} image from the compose file
         id: pin
         env:
           ENV_VAR: ${{ matrix.env_var }}
         run: |
-          image="$(grep -E "^${ENV_VAR}=" .env.example | cut -d= -f2-)"
+          image="$(grep -oE "\\\$\\{${ENV_VAR}:-[^}]+\\}" keycloak-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E "s/^\\\$\\{${ENV_VAR}:-//; s/\\}$//")"
           if [ -z "$image" ]; then
-            echo "${ENV_VAR} not found in .env.example" >&2
+            echo "${ENV_VAR} default not found in the compose x-images block" >&2
             exit 1
           fi
           echo "image=$image" >> "$GITHUB_OUTPUT"
@@ -130,9 +130,9 @@ jobs:
     # Keycloak ships trains everyone to ignore red CI. On the cron the
     # failure lands as a workflow-failure notification to the maintainer,
     # which is the point: a stale pin must not sit unnoticed. Dependabot's
-    # docker ecosystem cannot see these pins (they live in .env.example
-    # behind compose variables, not in a Dockerfile), so this job is the
-    # actual tracking mechanism.
+    # docker ecosystem cannot see these pins (they are compose interpolation
+    # defaults in the x-images block, not Dockerfile literals), so this job
+    # is the actual tracking mechanism.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
@@ -144,7 +144,7 @@ jobs:
         run: |
           status=0
           for var in TRAEFIK_IMAGE_TAG KEYCLOAK_POSTGRES_IMAGE_TAG KEYCLOAK_IMAGE_TAG; do
-            pin="$(grep -E "^${var}=" .env.example | cut -d= -f2-)"
+            pin="$(grep -oE "\\\$\\{${var}:-[^}]+\\}" keycloak-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E "s/^\\\$\\{${var}:-//; s/\\}$//")"
             ref="${pin%%@*}"
             pinned_digest="${pin##*@}"
             current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
@@ -159,7 +159,7 @@ jobs:
 
       - name: Compare pinned Keycloak version against the latest release
         run: |
-          pin="$(grep -E '^KEYCLOAK_IMAGE_TAG=' .env.example | cut -d= -f2-)"
+          pin="$(grep -oE '\$\{KEYCLOAK_IMAGE_TAG:-[^}]+\}' keycloak-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E 's/^\$\{KEYCLOAK_IMAGE_TAG:-//; s/\}$//')"
           ref="${pin%%@*}"
           pinned_version="${ref##*:}"
           latest="$(curl -fsSL --retry 3 https://api.github.com/repos/keycloak/keycloak/releases/latest | jq -r .tag_name)"
@@ -175,7 +175,7 @@ jobs:
 
       - name: Compare pinned Traefik minor against the latest release
         run: |
-          pin="$(grep -E '^TRAEFIK_IMAGE_TAG=' .env.example | cut -d= -f2-)"
+          pin="$(grep -oE '\$\{TRAEFIK_IMAGE_TAG:-[^}]+\}' keycloak-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E 's/^\$\{TRAEFIK_IMAGE_TAG:-//; s/\}$//')"
           ref="${pin%%@*}"
           pinned_minor="${ref##*:}"
           latest="$(curl -fsSL --retry 3 https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"
@@ -225,11 +225,11 @@ jobs:
       - name: Generate test .env with ephemeral credentials
         # The real .env is gitignored. CI generates throwaway credentials so
         # `docker compose up` succeeds without committing secrets to the repo.
-        # Image pins are copied from .env.example so CI always tests exactly
-        # what the template ships — the pins live in one file only.
+        # No *_IMAGE_TAG values on purpose: the compose file's x-images
+        # defaults apply, so CI always tests exactly the pins the template
+        # ships to users who run it unmodified.
         run: |
-          grep -E '^(TRAEFIK_IMAGE_TAG|KEYCLOAK_POSTGRES_IMAGE_TAG|KEYCLOAK_IMAGE_TAG)=' .env.example > .env
-          cat >> .env <<EOF
+          cat > .env <<EOF
           TRAEFIK_LOG_LEVEL=WARN
           TRAEFIK_ACME_EMAIL=ci@example.com
           TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
@@ -326,8 +326,7 @@ jobs:
         # hostnames here are placeholder — this job never exercises Traefik
         # or Keycloak HTTPS routing (that's deploy-and-test's responsibility).
         run: |
-          grep -E '^(TRAEFIK_IMAGE_TAG|KEYCLOAK_POSTGRES_IMAGE_TAG|KEYCLOAK_IMAGE_TAG)=' .env.example > .env
-          cat >> .env <<EOF
+          cat > .env <<EOF
           TRAEFIK_LOG_LEVEL=WARN
           TRAEFIK_ACME_EMAIL=ci@example.com
           TRAEFIK_HOSTNAME=traefik.keycloak.ci.example
