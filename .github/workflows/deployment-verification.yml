@@ -20,6 +20,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Authenticated requests avoid the anonymous API rate limit that shared
+  # GitHub runners regularly hit (api.github.com answers 403 otherwise).
+  GH_API_TOKEN: ${{ github.token }}
+
 jobs:
   lint:
     name: Lint shell scripts and workflow YAML
@@ -162,7 +167,7 @@ jobs:
           pin="$(grep -oE '\$\{KEYCLOAK_IMAGE_TAG:-[^}]+\}' keycloak-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E 's/^\$\{KEYCLOAK_IMAGE_TAG:-//; s/\}$//')"
           ref="${pin%%@*}"
           pinned_version="${ref##*:}"
-          latest="$(curl -fsSL --retry 3 https://api.github.com/repos/keycloak/keycloak/releases/latest | jq -r .tag_name)"
+          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/keycloak/keycloak/releases/latest | jq -r .tag_name)"
           if [ -z "$latest" ] || [ "$latest" = "null" ]; then
             echo "::error::Could not determine the latest Keycloak release from the GitHub API"
             exit 1
@@ -178,7 +183,7 @@ jobs:
           pin="$(grep -oE '\$\{TRAEFIK_IMAGE_TAG:-[^}]+\}' keycloak-traefik-letsencrypt-docker-compose.yml | head -1 | sed -E 's/^\$\{TRAEFIK_IMAGE_TAG:-//; s/\}$//')"
           ref="${pin%%@*}"
           pinned_minor="${ref##*:}"
-          latest="$(curl -fsSL --retry 3 https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"
+          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"
           latest="${latest#v}"
           if [ -z "$latest" ] || [ "$latest" = "null" ]; then
             echo "::error::Could not determine the latest Traefik release from the GitHub API"
