@@ -268,7 +268,7 @@ This stack ships with production-grade container hardening (per [`self-host-repo
   - `traefik`: `NET_BIND_SERVICE` — needed to bind to ports 80/443.
   - `keycloak`, `backups`: nothing.
 - **`read_only: true`** with explicit `tmpfs` mounts on postgres, traefik, and backups. Keycloak is intentionally NOT read-only — see the comment block on the keycloak service in the compose file for the rationale (upstream image auto-runs `kc.sh build` at start, which writes to `/opt/keycloak/lib/quarkus/`).
-- **Resource limits** (`deploy.resources.limits.memory` + `cpus`) on every service. Prevents one runaway service from starving the host.
+- **Resource limits** (`deploy.resources.limits.memory` + `cpus`) on every service. Prevents one runaway service from starving the host. The values are `.env`-overridable interpolation defaults (same pattern as the image pins — see `.env.example`), so sizing tweaks survive `git pull`.
 - **Non-root users** declared explicitly: `keycloak` runs as `1000:0`, `traefik` as `0:0` (its image has no non-root user; root + `cap_drop: ALL` + `cap_add: NET_BIND_SERVICE` is the minimum-privilege configuration). `postgres` and `backups` leave `user:` unset — the official postgres image's `docker-entrypoint.sh` handles user-switching internally (drops to uid 999 via `gosu` after the initial chown).
 
 Tested end-to-end as part of the v1.0.0 release. The `backup-restore-e2e` CI job validates that backup write + dropdb + createdb + restore work under the hardened context on every push.

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.3.0] - 2026-09-01
+
+### Added
+
+- **Resource limits are now `.env`-overridable** — the same interpolation
+  pattern as the image pins. All four services (Keycloak, PostgreSQL,
+  Traefik, backups) read their `deploy.resources` values from
+  `${<SERVICE>_MEMORY_LIMIT:-…}` / `${<SERVICE>_CPU_LIMIT:-…}` (and the
+  matching `_RESERVATION` variables), with the previous hardcoded values
+  as defaults. Nothing changes unless you set the variables; an override
+  in `.env` now survives replacing the compose file on upgrade.
+  Requested by @chattytak in issue #42. The full variable list with
+  defaults is documented in `.env.example`.
+
 ## [1.2.0] - 2026-08-31
 
 ### Changed
@@ -312,7 +326,8 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 - **2021–2025:** iterative updates to image tags (Traefik 1.x → 3.x, Keycloak 15.x → 26.x, PostgreSQL), healthcheck hardening, backup container with pruning.
 - **2026-04:** alignment with the supply-chain hardening track established by [heyvaldemar/aws-kubectl-docker](https://github.com/heyvaldemar/aws-kubectl-docker).
 
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.2.0...HEAD
+[1.3.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.3.0
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.3.0...HEAD
 [1.2.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0
