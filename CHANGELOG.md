@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.4.0] - 2026-09-02
+
+### Added
+
+- **`update.sh` — unattended updates to released states.** Fetches tags
+  and moves the checkout to the newest release (the only states CI has
+  fully built, booted, and smoke-tested), then redeploys. Refuses to
+  cross a major template version without `--allow-major`, refuses to
+  touch a checkout with local modifications, and supports `--dry-run`.
+  Designed for cron/systemd timers; the README documents the reasoning
+  and why this is a host-side script rather than a socket-mounted
+  updater container. Grew out of the discussion in #40.
+
 ## [1.3.0] - 2026-09-01
 
 ### Added
@@ -327,7 +340,8 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 - **2026-04:** alignment with the supply-chain hardening track established by [heyvaldemar/aws-kubectl-docker](https://github.com/heyvaldemar/aws-kubectl-docker).
 
 [1.3.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.3.0
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.3.0...HEAD
+[1.4.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.4.0
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.4.0...HEAD
 [1.2.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0

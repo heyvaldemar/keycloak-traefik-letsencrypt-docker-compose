@@ -226,6 +226,26 @@ The script uses the `PGPASSWORD` inherited from the backups container, so no cre
 | **Backup retention** | 7 days (one `PRUNE_DAYS`) | Increase `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` |
 | **Pre-restore snapshot** | Automatic before every restore, kept at `/tmp/pre-restore-*.gz` inside the backups container | — |
 
+## Unattended updates
+
+Releases are the update channel: a tag is cut only after CI has built the pinned images, booted the full stack, and passed the HTTPS and backup/restore smoke tests. `update.sh` moves a deployment to the newest tag and nothing else:
+
+```bash
+./update.sh --dry-run   # show what would be applied
+./update.sh             # update within the current major and redeploy
+```
+
+Put it on a timer for hands-off minor/patch updates:
+
+```bash
+# crontab -e
+17 5 * * *  /opt/keycloak-traefik-letsencrypt-docker-compose/update.sh >> /var/log/keycloak-update.log 2>&1
+```
+
+The script refuses to cross a MAJOR template version on its own — majors are breaking by definition and their release notes exist to be read. After reading them, `./update.sh --allow-major` performs the jump. It also refuses to touch a checkout with local modifications: your customization belongs in `.env`, which updates never overwrite.
+
+This is deliberately a host-side script and not a container in the stack: an in-stack updater needs the Docker socket (root on the host) and turns "someone pushed to a repo" into "someone deployed to your machine" with no operator in the loop. A cron job under your own user updates only to tagged, CI-verified states and leaves the trust boundary where it was.
+
 ## Testing
 
 The [Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs end-to-end backup + restore tests on every push, every pull request, and every Monday at 06:00 UTC. The `backup-restore-e2e` job boots the full compose stack with ephemeral credentials and short backup intervals (`INIT_SLEEP=10s`, `INTERVAL=30s`, `PRUNE_DAYS=7`) and exercises seven scenarios:
