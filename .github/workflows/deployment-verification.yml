@@ -10,7 +10,7 @@ on:
   schedule:
     # Weekly rebuild to catch upstream image drift (new Traefik, Keycloak,
     # or Postgres patch releases that break deployment).
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -130,7 +130,7 @@ jobs:
     name: Check pinned images for upstream drift
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Weekly cron + manual dispatch only. A new upstream release is not
+    # Scheduled + manual dispatch only. A new upstream release is not
     # actionable inside an unrelated PR, and failing every PR the day a new
     # Keycloak ships trains everyone to ignore red CI. On the cron the
     # failure lands as a workflow-failure notification to the maintainer,
