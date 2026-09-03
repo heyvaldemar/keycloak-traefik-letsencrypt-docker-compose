@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.5.0] - 2026-09-03
+
+### Added
+
+- **Per-image version overrides.** Every pin in the `x-images` block is
+  now `${<PREFIX>_IMAGE_TAG:-repo:${<PREFIX>_IMAGE_VERSION:-tag@sha256:digest}}`.
+  Set `<PREFIX>_IMAGE_VERSION` in `.env` to run a different version of one
+  image while every other pin stays as tested (Compose pulls that tag
+  without a digest), or `<PREFIX>_IMAGE_TAG` to replace the whole
+  reference as before. A deployment that sets neither is unchanged. The
+  freshness job, the Trivy matrix and the fleet digest automation resolve
+  the nested default before reading a pin. Needs Docker Compose v2.5 or
+  newer (2022): v2.0 to v2.4 leave the inner `${...}` unexpanded and
+  `docker compose up` fails with an invalid reference instead of
+  deploying something unexpected. Proposed in #40.
+
 ## [1.4.0] - 2026-09-02
 
 ### Added
@@ -341,7 +357,8 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 
 [1.3.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.3.0
 [1.4.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.4.0
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.4.0...v1.5.0
 [1.2.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0

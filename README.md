@@ -140,7 +140,9 @@ This repository is a **deployment template**, not a custom Docker image. It orch
 
 All three are pinned to `tag@sha256:<digest>` as interpolation defaults in the compose file's `x-images` block. Compose pulls by digest, not by tag. Two users deploying this repo on different days get byte-identical image manifests regardless of upstream repushes — and `git pull` alone delivers the version combination this repository has tested, because the pins live in the tracked compose file rather than in your `.env`. Setting `TRAEFIK_IMAGE_TAG`, `KEYCLOAK_POSTGRES_IMAGE_TAG`, or `KEYCLOAK_IMAGE_TAG` in `.env` overrides the default when you deliberately want a different version.
 
-The weekly `check-pin-freshness` CI job re-resolves each pinned tag against its registry and compares the pinned Keycloak and Traefik versions against the latest upstream releases — any drift fails the run and notifies the maintainer. (Dependabot's `docker` ecosystem cannot see these pins: they are compose interpolation defaults, not Dockerfile literals.) CI's **Deployment Verification** workflow runs on every push, pull request, and every Monday at 06:00 UTC — it stands up the full compose stack with ephemeral credentials, validates HTTPS routing + Traefik dashboard smoke, and tears down. CI's ephemeral `.env` sets no image variables and the Trivy matrix reads pins from the `x-images` block, so CI always exercises exactly the pins the template ships.
+Two override levels exist per image. `<PREFIX>_IMAGE_VERSION` in `.env` swaps only the version of that image (Compose then pulls the tag, without a digest) and leaves every other pin as tested; `<PREFIX>_IMAGE_TAG` replaces the whole reference, digest included. The variable names are listed in `.env.example`. Nested defaults need Docker Compose v2.5 or newer (2022); v2.0 to v2.4 leave the inner `${...}` unexpanded and `docker compose up` fails with an invalid reference instead of deploying something unexpected.
+
+The daily `check-pin-freshness` CI job re-resolves each pinned tag against its registry and compares the pinned Keycloak and Traefik versions against the latest upstream releases — any drift fails the run and notifies the maintainer. (Dependabot's `docker` ecosystem cannot see these pins: they are compose interpolation defaults, not Dockerfile literals.) CI's **Deployment Verification** workflow runs on every push, pull request, and every day at 06:00 UTC — it stands up the full compose stack with ephemeral credentials, validates HTTPS routing + Traefik dashboard smoke, and tears down. CI's ephemeral `.env` sets no image variables and the Trivy matrix reads pins from the `x-images` block, so CI always exercises exactly the pins the template ships.
 
 GitHub Actions are also pinned by commit SHA with `# vX.Y.Z` version comments. Dependabot's `github-actions` ecosystem keeps those fresh.
 
@@ -274,7 +276,7 @@ A green [`backup-restore-e2e`](https://github.com/heyvaldemar/keycloak-traefik-l
 - **Pre-rotation advisory.** Commits before [PR #12](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/pull/12) (merged 2026-04-23) committed real credential values. Those values remain in git history but are no longer referenced by any live file. Anyone who deployed with the pre-rotation configuration should rotate their live credentials and regenerate the Traefik dashboard BCrypt hash.
 - Traefik dashboard is behind basic auth. Consider adding IP allow-listing for additional isolation.
 - Upstream image digests are pinned; Dependabot auto-opens weekly PRs when digests change.
-- CI runs on every push and every Monday to catch upstream drift.
+- CI runs on every push and every day to catch upstream drift.
 
 See [`SECURITY.md`](SECURITY.md) for the vulnerability disclosure process.
 
