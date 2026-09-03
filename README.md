@@ -1,4 +1,4 @@
-# Keycloak + Traefik + Let's Encrypt — Docker Compose
+# Keycloak + Traefik + Let's Encrypt on Docker Compose
 
 [![Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/badge)](https://scorecard.dev/viewer/?uri=github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose)
@@ -48,7 +48,7 @@ Before you start, you need:
 
 - **A Linux server** with a public IP. Tested on Ubuntu 22.04 LTS+ and Debian 12+; should work on any distro that runs current Docker. Local Mac/Windows works for dev; production is Linux.
 - **Docker Engine 24+ and Docker Compose 2.20+.** Quick check: `docker version` and `docker compose version`. If you don't have Docker yet: [official install guide](https://docs.docker.com/engine/install/).
-- **A domain you control,** with two `A` records (or `CNAME`s) pointing at your server's public IP — one for Keycloak (e.g. `keycloak.example.com`), one for the Traefik dashboard (e.g. `traefik.keycloak.example.com`). DNS must propagate before deploy or Let's Encrypt's TLS-ALPN challenge will fail.
+- **A domain you control,** with two `A` records (or `CNAME`s) pointing at your server's public IP: one for Keycloak (e.g. `keycloak.example.com`), one for the Traefik dashboard (e.g. `traefik.keycloak.example.com`). DNS must propagate before deploy or Let's Encrypt's TLS-ALPN challenge will fail.
 - **Ports 80 and 443 open** on the server's firewall and not bound by another service. Quick check: `sudo ss -ltn '( sport = :80 or sport = :443 )'` should be empty.
 - **~2 GB free RAM and 1 free CPU** for the running stack. ~500 MB of disk for the images plus whatever your backup retention requires.
 
@@ -116,33 +116,33 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up
 - **Keycloak** latest stable (26.7.3) with PostgreSQL 16 backing store.
 - **Traefik v3** reverse proxy with automatic HTTP→HTTPS redirect at entry-point level and Let's Encrypt TLS-ALPN challenge for cert issuance.
 - **Basic-auth protected Traefik dashboard** on a separate hostname.
-- **Prometheus metrics** exposed by Traefik (`--metrics.prometheus`) — wire your own scraper.
+- **Prometheus metrics** exposed by Traefik (`‑‑metrics.prometheus`). Wire your own scraper.
 - **Healthchecks** on every service (Postgres `pg_isready`, Keycloak `/health/ready`, Traefik `/ping`) with service-dependency ordering (`depends_on: condition: service_healthy`).
 - **Scheduled PostgreSQL backups** with configurable interval, retention, and destination path.
 - **Automated restore script** (`keycloak-restore-database.sh`) with interactive backup selection.
-- **Traefik exposed-by-default disabled** — only services with `traefik.enable=true` labels are routed.
-- **Credentials required at deploy time** — compose fails fast if `.env` is incomplete, preventing accidental boots with empty or default credentials.
+- **Traefik exposed-by-default disabled**: only services with `traefik.enable=true` labels are routed.
+- **Credentials required at deploy time**: compose fails fast if `.env` is incomplete, preventing accidental boots with empty or default credentials.
 
 ### Typical use cases
 
-- **Self-hosted SSO for homelabs** — wire up Nextcloud, Grafana, Portainer, GitLab (or anything OIDC-capable) behind Keycloak federation.
-- **Small-team identity provider** — consultancies, startups, internal tools that outgrew shared passwords.
-- **Developer sandbox** — spin up a realistic Keycloak for integration testing without provisioning a managed IdP.
-- **Step toward production Kubernetes** — run the Docker Compose stack first, validate the shape, then migrate to a Helm chart once the config is known-good.
+- **Self-hosted SSO for homelabs**: wire up Nextcloud, Grafana, Portainer, GitLab (or anything OIDC-capable) behind Keycloak federation.
+- **Small-team identity provider**: consultancies, startups, internal tools that outgrew shared passwords.
+- **Developer sandbox**: spin up a realistic Keycloak for integration testing without provisioning a managed IdP.
+- **Step toward production Kubernetes**: run the Docker Compose stack first, validate the shape, then migrate to a Helm chart once the config is known-good.
 
 ## Supply chain trust
 
 This repository is a **deployment template**, not a custom Docker image. It orchestrates three upstream images:
 
-- [`traefik`](https://hub.docker.com/_/traefik) — reverse proxy, Docker Hub official image
-- [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak) — Keycloak upstream
-- [`postgres`](https://hub.docker.com/_/postgres) — PostgreSQL, Docker Hub official image
+- [`traefik`](https://hub.docker.com/_/traefik): reverse proxy, Docker Hub official image
+- [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak): Keycloak upstream
+- [`postgres`](https://hub.docker.com/_/postgres): PostgreSQL, Docker Hub official image
 
-All three are pinned to `tag@sha256:<digest>` as interpolation defaults in the compose file's `x-images` block. Compose pulls by digest, not by tag. Two users deploying this repo on different days get byte-identical image manifests regardless of upstream repushes — and `git pull` alone delivers the version combination this repository has tested, because the pins live in the tracked compose file rather than in your `.env`. Setting `TRAEFIK_IMAGE_TAG`, `KEYCLOAK_POSTGRES_IMAGE_TAG`, or `KEYCLOAK_IMAGE_TAG` in `.env` overrides the default when you deliberately want a different version.
+All three are pinned to `tag@sha256:<digest>` as interpolation defaults in the compose file's `x-images` block. Compose pulls by digest, not by tag. Two users deploying this repo on different days get byte-identical image manifests regardless of upstream repushes. And `git pull` alone delivers the version combination this repository has tested, because the pins live in the tracked compose file rather than in your `.env`. Setting `TRAEFIK_IMAGE_TAG`, `KEYCLOAK_POSTGRES_IMAGE_TAG`, or `KEYCLOAK_IMAGE_TAG` in `.env` overrides the default when you deliberately want a different version.
 
 Two override levels exist per image. `<PREFIX>_IMAGE_VERSION` in `.env` swaps only the version of that image (Compose then pulls the tag, without a digest) and leaves every other pin as tested; `<PREFIX>_IMAGE_TAG` replaces the whole reference, digest included. The variable names are listed in `.env.example`. Nested defaults need Docker Compose v2.5 or newer (2022); v2.0 to v2.4 leave the inner `${...}` unexpanded and `docker compose up` fails with an invalid reference instead of deploying something unexpected.
 
-The daily `check-pin-freshness` CI job re-resolves each pinned tag against its registry and compares the pinned Keycloak and Traefik versions against the latest upstream releases — any drift fails the run and notifies the maintainer. (Dependabot's `docker` ecosystem cannot see these pins: they are compose interpolation defaults, not Dockerfile literals.) CI's **Deployment Verification** workflow runs on every push, pull request, and every day at 06:00 UTC — it stands up the full compose stack with ephemeral credentials, validates HTTPS routing + Traefik dashboard smoke, and tears down. CI's ephemeral `.env` sets no image variables and the Trivy matrix reads pins from the `x-images` block, so CI always exercises exactly the pins the template ships.
+The daily `check-pin-freshness` CI job re-resolves each pinned tag against its registry and compares the pinned Keycloak and Traefik versions against the latest upstream releases. Any drift fails the run and notifies the maintainer. (Dependabot's `docker` ecosystem cannot see these pins: they are compose interpolation defaults, not Dockerfile literals.) CI's **Deployment Verification** workflow runs on every push, pull request, and every day at 06:00 UTC. It stands up the full compose stack with ephemeral credentials, validates HTTPS routing + Traefik dashboard smoke, and tears down. CI's ephemeral `.env` sets no image variables and the Trivy matrix reads pins from the `x-images` block, so CI always exercises exactly the pins the template ships.
 
 GitHub Actions are also pinned by commit SHA with `# vX.Y.Z` version comments. Dependabot's `github-actions` ecosystem keeps those fresh.
 
@@ -164,9 +164,9 @@ Before exposing this to real users, check every box:
 
 The `backups` container runs on the same network as Postgres and performs a dump → prune → sleep loop:
 
-1. **Dump** — `pg_dump` of the Keycloak database piped through `gzip`, timestamp-named. `set -o pipefail` catches `pg_dump` failures even though `gzip` exits 0. Failed dumps are renamed with a `.failed` suffix for diagnosis; the loop continues to the next cycle.
-2. **Prune** — deletes files matching `${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz` older than `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` days. Set `PRUNE_DAYS=0` to disable pruning entirely.
-3. **Sleep** — waits `KEYCLOAK_BACKUP_INTERVAL` before the next dump.
+1. **Dump**: `pg_dump` of the Keycloak database piped through `gzip`, timestamp-named. `set -o pipefail` catches `pg_dump` failures even though `gzip` exits 0. Failed dumps are renamed with a `.failed` suffix for diagnosis; the loop continues to the next cycle.
+2. **Prune**: deletes files matching `${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz` older than `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` days. Set `PRUNE_DAYS=0` to disable pruning entirely.
+3. **Sleep**: waits `KEYCLOAK_BACKUP_INTERVAL` before the next dump.
 
 All four knobs (`KEYCLOAK_BACKUP_INIT_SLEEP`, `KEYCLOAK_BACKUP_INTERVAL`, `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS`, `KEYCLOAK_POSTGRES_BACKUPS_PATH`) are configured via `.env`. See `.env.example` for defaults (30-minute warm-up, 24-hour interval, 7-day retention).
 
@@ -176,16 +176,16 @@ All four knobs (`KEYCLOAK_BACKUP_INIT_SLEEP`, `KEYCLOAK_BACKUP_INTERVAL`, `KEYCL
 docker compose -p keycloak logs backups | tail -20
 ```
 
-Expected output — one timestamped line per backup cycle:
+Expected output: one timestamped line per backup cycle:
 
 ```
 [2026-04-23T03:00:01+00:00] Starting backup to /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00-01.gz
 [2026-04-23T03:00:03+00:00] Backup OK: /srv/keycloak-postgres/backups/keycloak-postgres-backup-2026-04-23_03-00-01.gz (47382 bytes)
 ```
 
-A `Backup FAILED` line (with the partial file renamed to `.failed`) is your signal that something is broken — typically the postgres container is unhealthy, the backup volume filled up, or the DB credentials were rotated without updating the backups container environment.
+A `Backup FAILED` line (with the partial file renamed to `.failed`) is your signal that something is broken: typically the postgres container is unhealthy, the backup volume filled up, or the DB credentials were rotated without updating the backups container environment.
 
-**Off-host replication.** By default backups live in the `keycloak-database-backups` Docker volume — if the host dies, backups die with it. For disaster recovery, bind-mount the backup path to a host directory that your off-host backup solution (restic, rclone, Borg, S3 sync, etc.) already covers:
+**Off-host replication.** By default backups live in the `keycloak-database-backups` Docker volume. If the host dies, backups die with it. For disaster recovery, bind-mount the backup path to a host directory that your off-host backup solution (restic, rclone, Borg, S3 sync, etc.) already covers:
 
 ```yaml
 # docker-compose.override.yml
@@ -199,11 +199,11 @@ services:
 
 `keycloak-restore-database.sh` handles the restore flow end-to-end with safety guards at every step where data loss is possible:
 
-1. **Sources `.env`** — DB name/user/backups path read from your live configuration (not hardcoded). Works after you customise the defaults.
+1. **Sources `.env`**: DB name/user/backups path read from your live configuration (not hardcoded). Works after you customise the defaults.
 2. **Lists available backups** from the backups volume.
-3. **Prompts for selection** — you copy-paste the filename. The script rejects typos / path-traversal by validating the selection against the listed filenames.
+3. **Prompts for selection**: you copy-paste the filename. The script rejects typos / path-traversal by validating the selection against the listed filenames.
 4. **Integrity-checks** the selected archive via `gunzip -t`. A corrupt archive is caught here, before anything is touched.
-5. **Requires `DESTROY` confirmation** — typing anything else (including empty) aborts without changes.
+5. **Requires `DESTROY` confirmation**: typing anything else (including empty) aborts without changes.
 6. **Creates a pre-restore snapshot** of the CURRENT database state at `/tmp/pre-restore-<timestamp>.gz` inside the backups container. This is your rollback if the restore produces a broken DB.
 7. **Stops Keycloak**, drops + recreates the database, pipes the selected backup into `psql`.
 8. **Starts Keycloak**, waits up to 2 minutes for the healthcheck to report `healthy`, then runs a sanity query confirming the `public` schema has tables.
@@ -226,7 +226,7 @@ The script uses the `PGPASSWORD` inherited from the backups container, so no cre
 | **RPO** (max data loss) | 24 hours (one `KEYCLOAK_BACKUP_INTERVAL`) | Reduce `KEYCLOAK_BACKUP_INTERVAL` (e.g. `1h`) |
 | **RTO** (typical restore time) | 1-3 minutes on a small DB; scales with DB size | Keep Keycloak state lean (realms + clients only, ship audit logs elsewhere) |
 | **Backup retention** | 7 days (one `PRUNE_DAYS`) | Increase `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS` |
-| **Pre-restore snapshot** | Automatic before every restore, kept at `/tmp/pre-restore-*.gz` inside the backups container | — |
+| **Pre-restore snapshot** | Automatic before every restore, kept at `/tmp/pre-restore-*.gz` inside the backups container | - |
 
 ## Unattended updates
 
@@ -244,7 +244,7 @@ Put it on a timer for hands-off minor/patch updates:
 17 5 * * *  /opt/keycloak-traefik-letsencrypt-docker-compose/update.sh >> /var/log/keycloak-update.log 2>&1
 ```
 
-The script refuses to cross a MAJOR template version on its own — majors are breaking by definition and their release notes exist to be read. After reading them, `./update.sh --allow-major` performs the jump. It also refuses to touch a checkout with local modifications: your customization belongs in `.env`, which updates never overwrite.
+The script refuses to cross a MAJOR template version on its own: majors are breaking by definition and their release notes exist to be read. After reading them, `./update.sh ‑‑allow-major` performs the jump. It also refuses to touch a checkout with local modifications: your customization belongs in `.env`, which updates never overwrite.
 
 This is deliberately a host-side script and not a container in the stack: an in-stack updater needs the Docker socket (root on the host) and turns "someone pushed to a repo" into "someone deployed to your machine" with no operator in the loop. A cron job under your own user updates only to tagged, CI-verified states and leaves the trust boundary where it was.
 
@@ -252,13 +252,13 @@ This is deliberately a host-side script and not a container in the stack: an in-
 
 The [Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs end-to-end backup + restore tests on every push, every pull request, and every day at 06:00 UTC. The `backup-restore-e2e` job boots the full compose stack with ephemeral credentials and short backup intervals (`INIT_SLEEP=10s`, `INTERVAL=30s`, `PRUNE_DAYS=7`) and exercises seven scenarios:
 
-1. **`.env` required** — `docker compose config` fails cleanly without `.env`, guarding the `${VAR:?...}` compose syntax.
-2. **Backup created** — a `.gz` appears in the backups volume with size > 0.
-3. **Backup integrity** — `gunzip -t` on the backup exits zero.
-4. **Backup contents valid** — decompressed SQL contains `PostgreSQL database dump` header and `CREATE TABLE`/`CREATE SCHEMA`.
-5. **Backup failure detected** — stopping postgres forces a failed cycle; a `*.failed` file and `Backup FAILED` log line are produced.
-6. **Restore roundtrip** — inserting a marker row, restoring an earlier backup, and asserting the marker is gone proves the backup is genuinely restorable (not a no-op).
-7. **Prune removes old** — a fake file with 14-day-old mtime is deleted on the next prune cycle; recent backups are preserved.
+1. **`.env` required**: `docker compose config` fails cleanly without `.env`, guarding the `${VAR:?...}` compose syntax.
+2. **Backup created**: a `.gz` appears in the backups volume with size > 0.
+3. **Backup integrity**: `gunzip -t` on the backup exits zero.
+4. **Backup contents valid**: decompressed SQL contains `PostgreSQL database dump` header and `CREATE TABLE`/`CREATE SCHEMA`.
+5. **Backup failure detected**: stopping postgres forces a failed cycle; a `*.failed` file and `Backup FAILED` log line are produced.
+6. **Restore roundtrip**: inserting a marker row, restoring an earlier backup, and asserting the marker is gone proves the backup is genuinely restorable (not a no-op).
+7. **Prune removes old**: a fake file with 14-day-old mtime is deleted on the next prune cycle; recent backups are preserved.
 
 Run the same tests locally:
 
@@ -268,7 +268,7 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up
 ./tests/e2e-backup-restore.sh
 ```
 
-A green [`backup-restore-e2e`](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) run is the authoritative proof that the backup + restore flow works end-to-end on every push. If you deploy this template and hit an unexpected issue, compare the green CI run's logs to your own — most "doesn't work" cases trace to DNS propagation, firewall rules, hostname mismatches, or a customised `.env` that silently breaks a variable the tests cover.
+A green [`backup-restore-e2e`](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) run is the authoritative proof that the backup + restore flow works end-to-end on every push. If you deploy this template and hit an unexpected issue, compare the green CI run's logs to your own: most "doesn't work" cases trace to DNS propagation, firewall rules, hostname mismatches, or a customised `.env` that silently breaks a variable the tests cover.
 
 ## Security Notes
 
@@ -284,14 +284,14 @@ See [`SECURITY.md`](SECURITY.md) for the vulnerability disclosure process.
 
 This stack ships with production-grade container hardening (per [`self-host-repo-hardening-runbook` → Phase 7](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/RUNBOOK.md#phase-7--container-security-context--resource-limits)) applied to every service:
 
-- **`security_opt: no-new-privileges:true`** — prevents privilege escalation via setuid binaries even if a process inside escapes its initial capability set.
-- **`cap_drop: [ALL]`** — drops every Linux capability. Each service adds back only what it genuinely needs:
-  - `postgres`: `CHOWN`, `DAC_READ_SEARCH`, `FOWNER`, `SETGID`, `SETUID` — needed by `docker-entrypoint.sh` to chown the data dir on first boot and `gosu` to drop to the postgres user.
-  - `traefik`: `NET_BIND_SERVICE` — needed to bind to ports 80/443.
+- **`security_opt: no-new-privileges:true`**: prevents privilege escalation via setuid binaries even if a process inside escapes its initial capability set.
+- **`cap_drop: [ALL]`**: drops every Linux capability. Each service adds back only what it genuinely needs:
+  - `postgres`: `CHOWN`, `DAC_READ_SEARCH`, `FOWNER`, `SETGID`, `SETUID`, needed by `docker-entrypoint.sh` to chown the data dir on first boot and `gosu` to drop to the postgres user.
+  - `traefik`: `NET_BIND_SERVICE`, needed to bind to ports 80/443.
   - `keycloak`, `backups`: nothing.
-- **`read_only: true`** with explicit `tmpfs` mounts on postgres, traefik, and backups. Keycloak is intentionally NOT read-only — see the comment block on the keycloak service in the compose file for the rationale (upstream image auto-runs `kc.sh build` at start, which writes to `/opt/keycloak/lib/quarkus/`).
-- **Resource limits** (`deploy.resources.limits.memory` + `cpus`) on every service. Prevents one runaway service from starving the host. The values are `.env`-overridable interpolation defaults (same pattern as the image pins — see `.env.example`), so sizing tweaks survive `git pull`.
-- **Non-root users** declared explicitly: `keycloak` runs as `1000:0`, `traefik` as `0:0` (its image has no non-root user; root + `cap_drop: ALL` + `cap_add: NET_BIND_SERVICE` is the minimum-privilege configuration). `postgres` and `backups` leave `user:` unset — the official postgres image's `docker-entrypoint.sh` handles user-switching internally (drops to uid 999 via `gosu` after the initial chown).
+- **`read_only: true`** with explicit `tmpfs` mounts on postgres, traefik, and backups. Keycloak is intentionally NOT read-only. See the comment block on the keycloak service in the compose file for the rationale (upstream image auto-runs `kc.sh build` at start, which writes to `/opt/keycloak/lib/quarkus/`).
+- **Resource limits** (`deploy.resources.limits.memory` + `cpus`) on every service. Prevents one runaway service from starving the host. The values are `.env`-overridable interpolation defaults (same pattern as the image pins, see `.env.example`), so sizing tweaks survive `git pull`.
+- **Non-root users** declared explicitly: `keycloak` runs as `1000:0`, `traefik` as `0:0` (its image has no non-root user; root + `cap_drop: ALL` + `cap_add: NET_BIND_SERVICE` is the minimum-privilege configuration). `postgres` and `backups` leave `user:` unset: the official postgres image's `docker-entrypoint.sh` handles user-switching internally (drops to uid 999 via `gosu` after the initial chown).
 
 Tested end-to-end as part of the v1.0.0 release. The `backup-restore-e2e` CI job validates that backup write + dropdb + createdb + restore work under the hardened context on every push.
 
@@ -299,14 +299,14 @@ Tested end-to-end as part of the v1.0.0 release. The `backup-restore-e2e` CI job
 
 The patterns in this stack are codified as a reusable standard at [`heyvaldemar/self-host-repo-hardening-runbook` → `RUNBOOK.md`](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/RUNBOOK.md). If you maintain a similar Compose-stack repo and want to follow the same standard, the runbook covers eight phases:
 
-- **Phase 0** — Security audit + `.env` hygiene
-- **Phase 1** — Community files (LICENSE, SECURITY.md, CHANGELOG.md, Dependabot)
-- **Phase 2** — CI workflow hardening (commit-SHA pins, per-job permissions, weekly cron)
-- **Phase 3** — Upstream image digest pinning
-- **Phase 4** — README rewrite (evaluator-first structure)
-- **Phase 5** — OpenSSF Scorecard
-- **Phase 6** — CI lint + upstream Trivy scan
-- **Phase 7** — Container security context + resource limits (this README's "Container hardening" section)
+- **Phase 0**: Security audit + `.env` hygiene
+- **Phase 1**: Community files (LICENSE, SECURITY.md, CHANGELOG.md, Dependabot)
+- **Phase 2**: CI workflow hardening (commit-SHA pins, per-job permissions, weekly cron)
+- **Phase 3**: Upstream image digest pinning
+- **Phase 4**: README rewrite (evaluator-first structure)
+- **Phase 5**: OpenSSF Scorecard
+- **Phase 6**: CI lint + upstream Trivy scan
+- **Phase 7**: Container security context + resource limits (this README's "Container hardening" section)
 
 Plus an optional Architecture Decision Records (ADR) phase for flagship repos. Nine common pitfalls grounded in production iteration history. Helper scripts for bulk operations (digest resolution, action-tag dereferencing, phase-1/5 application).
 
@@ -316,7 +316,7 @@ Plus an optional Architecture Decision Records (ADR) phase for flagship repos. N
 
 <div align="center">
 
-**Maintained by [Vladimir Mikhalev](https://github.com/heyvaldemar)** — Docker Captain · IBM Champion · AWS Community Builder
+**Maintained by [Vladimir Mikhalev](https://github.com/heyvaldemar)** · Docker Captain · IBM Champion · AWS Community Builder
 
 [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1) · [Blog](https://heyvaldemar.com) · [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)
 

@@ -29,7 +29,7 @@ _(no unreleased changes yet)_
 
 ### Added
 
-- **`update.sh` — unattended updates to released states.** Fetches tags
+- **`update.sh`: unattended updates to released states.** Fetches tags
   and moves the checkout to the newest release (the only states CI has
   fully built, booted, and smoke-tested), then redeploys. Refuses to
   cross a major template version without `--allow-major`, refuses to
@@ -42,7 +42,7 @@ _(no unreleased changes yet)_
 
 ### Added
 
-- **Resource limits are now `.env`-overridable** — the same interpolation
+- **Resource limits are now `.env`-overridable**: the same interpolation
   pattern as the image pins. All four services (Keycloak, PostgreSQL,
   Traefik, backups) read their `deploy.resources` values from
   `${<SERVICE>_MEMORY_LIMIT:-…}` / `${<SERVICE>_CPU_LIMIT:-…}` (and the
@@ -58,7 +58,7 @@ _(no unreleased changes yet)_
 
 - **Image pins moved into the compose file as interpolation defaults**
   (`x-images` block, `${VAR:-tag@sha256:…}`), so `git pull` alone delivers
-  the version combination this repository has tested — no manual syncing of
+  the version combination this repository has tested, no manual syncing of
   `*_IMAGE_TAG` lines into your `.env` after each release. `.env` now
   carries only secrets and deliberate overrides; setting `TRAEFIK_IMAGE_TAG`,
   `KEYCLOAK_POSTGRES_IMAGE_TAG`, or `KEYCLOAK_IMAGE_TAG` there still wins
@@ -79,7 +79,7 @@ _(no unreleased changes yet)_
   certificate hostname-verification bypass, an OIDC unsigned-JWT assertion
   policy bypass, and authorization bypasses in fine-grained admin
   permissions. Caught by the weekly `check-pin-freshness` job on its first
-  scheduled run — the exact failure mode issue #40 reported can no longer
+  scheduled run. The exact failure mode issue #40 reported can no longer
   sit unnoticed. Same upgrade path as v1.1.0: back up, `docker compose
   pull && up -d`; schema migrates forward automatically.
 
@@ -88,7 +88,7 @@ _(no unreleased changes yet)_
 Security release. Every deployment pinned to v1.0.0 runs Keycloak 26.2.5,
 which is affected by CVE-2026-18963 (CVSS 9.1) and eight further High-severity
 fixes shipped upstream since. Upgrade path for standard deployments:
-`git pull && docker compose pull && docker compose up -d` — Keycloak migrates
+`git pull && docker compose pull && docker compose up -d`: Keycloak migrates
 its schema forward automatically on first start. Take a database backup first
 (the `backups` sidecar gives you one at most `KEYCLOAK_BACKUP_INTERVAL` old);
 Keycloak does not support schema rollback, so the way back from a failed
@@ -101,16 +101,16 @@ upgrade is `keycloak-restore-database.sh` with the previous image pin.
   CVE-2026-18963 (unauthenticated account takeover via password-reset flow
   bypass, CVSS 9.1, fixed in 26.7.2) and the 26.5.x/26.6.x authentication- and
   authorization-bypass series. Reported in issue #40. No compose-file changes
-  required — `KC_BOOTSTRAP_ADMIN_*`, health endpoint on port 9000, and the
+  required: `KC_BOOTSTRAP_ADMIN_*`, health endpoint on port 9000, and the
   Phase 7 hardening all behave identically on 26.7.2.
 - **Traefik bumped 3.2 → 3.7** (`traefik:3.7@sha256:9c2a54d8…`). Traefik
-  3.2's vendored Docker client cannot talk to Docker Engine 29 — the docker
+  3.2's vendored Docker client cannot talk to Docker Engine 29: the docker
   provider fails with `Error response from daemon: ""` in a retry loop and
   no routers are ever created, so the stack silently serves 404s on hosts
   running current Docker. Verified locally: 3.2 fails against Docker Desktop
   29.6.1, 3.6+ works. All Traefik flags used by this template are unchanged
   across 3.2 → 3.7.
-- **`postgres:16` digest refreshed** (`71e27bf6… → f1c3376c…`) — upstream had
+- **`postgres:16` digest refreshed** (`71e27bf6… → f1c3376c…`). Upstream had
   repushed the tag; the pinned digest was stale.
 
 ### Fixed
@@ -123,18 +123,18 @@ upgrade is `keycloak-restore-database.sh` with the previous image pin.
   upstream security releases (issue #40). Replaced with a weekly
   `check-pin-freshness` CI job that re-resolves each pinned tag against its
   registry (digest drift) and compares the pinned Keycloak version and
-  Traefik minor line against the latest upstream GitHub releases — any
+  Traefik minor line against the latest upstream GitHub releases. Any
   mismatch fails the run and notifies the maintainer. The dead `docker` ecosystem entry is removed from
   `dependabot.yml` with a comment explaining why.
 - **Image pins now live in exactly one file.** The pins were previously
   duplicated in four places (`.env.example`, the Trivy scan matrix, and two
-  CI ephemeral `.env` heredocs) — a bump had to hit all four. The Trivy
+  CI ephemeral `.env` heredocs). A bump had to hit all four. The Trivy
   matrix and both CI `.env` generation steps now read the pins from
   `.env.example` at runtime.
 
 ## [1.0.0] - 2026-05-06
 
-First semver release. Stable reference point for downstream production pinning. Brings the repo to full compliance with [`self-host-repo-hardening-runbook` v1.3.0+](https://github.com/heyvaldemar/self-host-repo-hardening-runbook) — the canonical Compose-stack reference implementation across the augmented eight-phase standard.
+First semver release. Stable reference point for downstream production pinning. Brings the repo to full compliance with [`self-host-repo-hardening-runbook` v1.3.0+](https://github.com/heyvaldemar/self-host-repo-hardening-runbook), the canonical Compose-stack reference implementation across the augmented eight-phase standard.
 
 ### Changed (BREAKING for stacks with custom modifications)
 
@@ -143,8 +143,8 @@ First semver release. Stable reference point for downstream production pinning. 
   - `cap_drop: [ALL]` on all four services with minimal `cap_add` per service:
     - `postgres`: `CHOWN`, `DAC_READ_SEARCH`, `FOWNER`, `SETGID`, `SETUID` (needed by `docker-entrypoint.sh` to chown the data dir on first boot and `gosu` to drop to the postgres user).
     - `traefik`: `NET_BIND_SERVICE` (needed to bind to ports 80/443 even as root once `cap_drop` strips it).
-    - `keycloak`, `backups`: no `cap_add` — neither service needs any Linux capability for normal operation.
-  - `read_only: true` with explicit `tmpfs` mounts on `postgres` (`/tmp` + `/var/run/postgresql`), `traefik` (`/tmp`), `backups` (`/tmp`). NOT applied to `keycloak` — see the keycloak-service comment block in the compose file for the rationale (upstream image auto-runs `kc.sh build` at start, which writes to `/opt/keycloak/lib/quarkus/`; making this work under read_only requires either a custom-built image with `--optimized` flag or tmpfs covering the entire `/opt/keycloak/lib` tree, neither of which fits a Compose-template repo).
+    - `keycloak`, `backups`: no `cap_add`: neither service needs any Linux capability for normal operation.
+  - `read_only: true` with explicit `tmpfs` mounts on `postgres` (`/tmp` + `/var/run/postgresql`), `traefik` (`/tmp`), `backups` (`/tmp`). NOT applied to `keycloak`. See the keycloak-service comment block in the compose file for the rationale (upstream image auto-runs `kc.sh build` at start, which writes to `/opt/keycloak/lib/quarkus/`; making this work under read_only requires either a custom-built image with `‑‑optimized` flag or tmpfs covering the entire `/opt/keycloak/lib` tree, neither of which fits a Compose-template repo).
   - Resource limits (`deploy.resources.limits.memory` + `cpus`) on every service. Reservations also declared.
   - Explicit `user:` directive where the upstream image supports it: `keycloak` runs as `1000:0`, `traefik` as `0:0`. `postgres` and `backups` leave `user:` unset because the official postgres image's `docker-entrypoint.sh` handles user-switching internally (drops to uid 999 via `gosu` after chown'ing the data dir; forcing `user:` at compose-level fights that design).
 - **BREAKING note:** Stacks running custom modifications that conflict with the hardened security context (e.g., extension volumes that need write access, custom binaries that use elevated capabilities) may experience startup failures. Standard deployments without modifications upgrade cleanly via `docker compose pull && docker compose up -d`. Migration path for incompatible customisations: pin to the previous commit (`git checkout 13e5a7b`) until your overrides are audited.
@@ -186,7 +186,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   script (`keycloak-restore-database.sh`) sidesteps the race by stopping
   Keycloak first; this test exercises the underlying primitives directly,
   so `--force` is the appropriate equivalent. No change to the test's
-  semantic — the assertion that the marker row is absent after restore is
+  semantic. The assertion that the marker row is absent after restore is
   unchanged.
 - **Backup filename collision at sub-minute intervals.** Backup filenames
   use only minute granularity
@@ -194,7 +194,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   the same minute produced identical paths and the second overwrote the
   first. At production defaults (`INTERVAL=24h`) the bug is unreachable,
   but the new e2e test harness drives `INTERVAL=30s` and surfaced it on
-  the first run — `test_backup_failure_detected` renamed the previously
+  the first run: `test_backup_failure_detected` renamed the previously
   successful backup to `.failed` because pg_dump's partial output landed
   at the same filename. Fix: timestamp format extended to include seconds
   (`YYYY-MM-DD_HH-MM-SS.gz`). Prune glob pattern still matches. Restore
@@ -204,7 +204,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   introduced two local container-shell variables (`$BACKUP_FILE`, `$SIZE`)
   inside the `command: >-` block without `$$` escapes. Docker compose
   interpolated them at config time against the empty .env values and
-  produced `BACKUP_FILE=""` at container runtime — every backup cycle ran
+  produced `BACKUP_FILE=""` at container runtime. Every backup cycle ran
   `pg_dump | gzip > ""` and emitted `Backup FAILED` with
   `sh: cannot create : Directory nonexistent`. Zero-byte files never landed,
   so the `backup-created` test case surfaced the regression on the first CI
@@ -218,7 +218,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
 - **End-to-end backup/restore CI tests.** New `backup-restore-e2e` job in
   `deployment-verification.yml` runs `tests/e2e-backup-restore.sh` on every
   push, pull request, and the Monday weekly cron. Parallel to
-  `deploy-and-test` — backup/restore is orthogonal to HTTPS routing, so one
+  `deploy-and-test`. Backup/restore is orthogonal to HTTPS routing, so one
   failing doesn't mask the other; both fan out from `needs: lint` so the
   compose-up slot isn't burned on workflow-syntax errors. The job generates
   an ephemeral `.env` with short backup intervals
@@ -226,7 +226,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   completes in <5 min wall-clock. `timeout-minutes: 15`, 
   `permissions: contents: read`, `docker compose down` in an
   `if: always()` teardown step.
-- `tests/e2e-backup-restore.sh` — seven shellcheck-clean test cases that
+- `tests/e2e-backup-restore.sh`: seven shellcheck-clean test cases that
   exercise every guard PR #21 landed: `test_env_required` (compose `${VAR:?}`
   gate), `test_backup_created` (cycle produces non-empty `.gz`),
   `test_backup_gunzip_ok` (archive is a valid gzip stream),
@@ -237,13 +237,13 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   absent, proving restore is not a no-op), `test_prune_removes_old` (fake
   file with 14-day-old mtime is deleted on next prune cycle; recent backups
   preserved).
-- `tests/README.md` — local-run instructions, test-case descriptions, and
+- `tests/README.md`: local-run instructions, test-case descriptions, and
   required `.env` timing knobs.
 - README `Testing` section between Restoring and Security Notes; TOC updated.
 - The `lint` job's shellcheck invocation now covers `tests/*.sh` in addition
   to repo-root `*.sh` so the e2e test runner is linted alongside the
   restore script.
-- `.github/workflows/scorecard.yml` — OpenSSF Scorecard analysis workflow.
+- `.github/workflows/scorecard.yml`: OpenSSF Scorecard analysis workflow.
   Runs weekly on Tuesdays at 06:00 UTC (one day after the Monday deployment
   verification run), on every push to `main`, and on branch-protection-rule
   changes. Publishes results to the public OpenSSF API (scorecard.dev
@@ -253,14 +253,14 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   SHA is rejected by Scorecard's imposter-commit verification).
 - README badge for OpenSSF Scorecard, placed between the Deployment
   Verification and License badges.
-- `LICENSE` — canonical MIT license text at repo root, `Copyright (c) 2021-2026 Vladimir Mikhalev (heyvaldemar)`.
-- `SECURITY.md` — vulnerability disclosure policy, supported versions, supply-chain trust statement, and a callout for the pre-PR-#12 credential rotation advisory.
-- `CHANGELOG.md` — this file, Keep-a-Changelog format.
+- `LICENSE`: canonical MIT license text at repo root, `Copyright (c) 2021-2026 Vladimir Mikhalev (heyvaldemar)`.
+- `SECURITY.md`: vulnerability disclosure policy, supported versions, supply-chain trust statement, and a callout for the pre-PR-#12 credential rotation advisory.
+- `CHANGELOG.md`: this file, Keep-a-Changelog format.
 
 ### Changed
 - **Backup/restore safety hardening.** Closes four HIGH-severity gaps in the
   backup + restore flow identified during the post-runbook-v1.2 audit. No
-  functional regression — existing backups remain restorable by the new
+  functional regression. Existing backups remain restorable by the new
   script.
   - `keycloak-restore-database.sh` now sources `.env` so the DB name, user,
     and backup path match whatever is deployed (previously hardcoded to the
@@ -282,7 +282,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
     healthcheck to report `healthy`, then runs a sanity query asserting
     the `public` schema has >0 tables. Either check failing prints the
     rollback-from-snapshot command and exits non-zero.
-  - Selection input validated against the listed backup filenames —
+  - Selection input validated against the listed backup filenames:
     rejects typos and path-traversal ( `../` etc.).
 - **Backup loop hardened in the `backups` compose service.**
   `pg_dump | gzip > file` now runs under `set -o pipefail`, so a `pg_dump`
@@ -299,18 +299,18 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   off-host-replication override example, and an RTO/RPO table with
   tightening knobs.
 - Deployment-verification workflow gained two new jobs:
-  - **`lint`** — runs `shellcheck` (via `koalaman/shellcheck-alpine:stable`) on
+  - **`lint`**: runs `shellcheck` (via `koalaman/shellcheck-alpine:stable`) on
     every `*.sh` in the repo root, and `actionlint` (via
     `rhysd/actionlint:1.7.12`) on every workflow YAML. Blocks `deploy-and-test`
     via `needs: lint` so CI fails fast on typos and footguns before burning
     the 15-minute compose-up slot.
-  - **`scan-trivy`** — matrix job scanning each pinned upstream image
+  - **`scan-trivy`**: matrix job scanning each pinned upstream image
     (`postgres:16@sha256:…`, `traefik:3.2@sha256:…`,
     `quay.io/keycloak/keycloak:26.2.5@sha256:…`) for CRITICAL/HIGH fixable
     CVEs via `aquasecurity/trivy-action@v0.35.0`, uploading per-image SARIF
     to the GitHub Security tab under categories `trivy-postgres`,
     `trivy-traefik`, `trivy-keycloak`. Runs parallel to `deploy-and-test`
-    with `continue-on-error: true` — findings don't block deployment but
+    with `continue-on-error: true`: findings don't block deployment but
     surface for triage via Dependabot digest bumps.
 - Resolved pre-existing shellcheck warnings (SC2034, SC2086, SC2162) in
   `keycloak-restore-database.sh`; fixed the README `server.cfg` leftover
@@ -325,7 +325,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   alter a given deployment. Dependabot's `docker` ecosystem (added in this
   release) auto-opens weekly PRs when upstream digests change.
 - Dependabot gained a `docker` ecosystem to track upstream image digest bumps weekly, alongside the existing `github-actions` ecosystem. Both ecosystems now group minor/patch bumps into a single PR per week; major bumps continue to open individual PRs.
-- GitHub Actions pinned by commit SHA instead of floating `@vN` tag — currently
+- GitHub Actions pinned by commit SHA instead of floating `@vN` tag, currently
   one action (`actions/checkout@de0fac2e…` # v6) in the deployment-verification
   workflow. Dependabot's `github-actions` ecosystem keeps the pin fresh.
 - Deployment verification workflow hardened: explicit `permissions: contents: read`,
@@ -342,7 +342,7 @@ The following entries were accumulated in `[Unreleased]` between PR #12 (2026-04
   commit-SHA statement that the template now includes.
 
 ### Removed
-- `.github/FUNDING.yml` — sponsor discovery moves to heyvaldemar.com. Aligns with the same decision applied across other heyvaldemar public repositories.
+- `.github/FUNDING.yml`: sponsor discovery moves to heyvaldemar.com. Aligns with the same decision applied across other heyvaldemar public repositories.
 
 ### Security
 - Credentials untracked from `.env` in PR #12 (merged 2026-04-23). `.env.example` now ships `change_me_*` placeholders and the docker-compose `${VAR:?}` syntax fails fast if required variables are unset.
