@@ -263,7 +263,7 @@ The [Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-le
 Run the same tests locally:
 
 ```bash
-# Bring the stack up first, with short backup intervals in .env — see tests/README.md
+# Bring the stack up first, with short backup intervals in .env (see tests/README.md)
 docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up -d
 ./tests/e2e-backup-restore.sh
 ```
