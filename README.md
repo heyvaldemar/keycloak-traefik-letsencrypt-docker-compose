@@ -275,7 +275,7 @@ A green [`backup-restore-e2e`](https://github.com/heyvaldemar/keycloak-traefik-l
 - Credentials are read from `.env` at deploy time. `.env` is gitignored. The compose file uses `${VAR:?...}` syntax so `docker compose up` fails immediately with a helpful error if any required variable is missing.
 - **Pre-rotation advisory.** Commits before [PR #12](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/pull/12) (merged 2026-04-23) committed real credential values. Those values remain in git history but are no longer referenced by any live file. Anyone who deployed with the pre-rotation configuration should rotate their live credentials and regenerate the Traefik dashboard BCrypt hash.
 - Traefik dashboard is behind basic auth. Consider adding IP allow-listing for additional isolation.
-- Upstream image digests are pinned; Dependabot auto-opens weekly PRs when digests change.
+- Upstream image digests are pinned; the daily freshness job and the fleet automation refresh them when upstream repushes.
 - CI runs on every push and every day to catch upstream drift.
 
 See [`SECURITY.md`](SECURITY.md) for the vulnerability disclosure process.
