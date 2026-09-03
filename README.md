@@ -250,7 +250,7 @@ This is deliberately a host-side script and not a container in the stack: an in-
 
 ## Testing
 
-The [Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs end-to-end backup + restore tests on every push, every pull request, and every Monday at 06:00 UTC. The `backup-restore-e2e` job boots the full compose stack with ephemeral credentials and short backup intervals (`INIT_SLEEP=10s`, `INTERVAL=30s`, `PRUNE_DAYS=7`) and exercises seven scenarios:
+The [Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs end-to-end backup + restore tests on every push, every pull request, and every day at 06:00 UTC. The `backup-restore-e2e` job boots the full compose stack with ephemeral credentials and short backup intervals (`INIT_SLEEP=10s`, `INTERVAL=30s`, `PRUNE_DAYS=7`) and exercises seven scenarios:
 
 1. **`.env` required** — `docker compose config` fails cleanly without `.env`, guarding the `${VAR:?...}` compose syntax.
 2. **Backup created** — a `.gz` appears in the backups volume with size > 0.
