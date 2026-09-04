@@ -152,7 +152,19 @@ jobs:
             pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" keycloak-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
             ref="${pin%%@*}"
             pinned_digest="${pin##*@}"
-            current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
+            # Three attempts: an unanswered registry lookup used to leave this empty,
+            # and the comparison below then reported it as drift.
+            current_digest=""
+            for attempt in 1 2 3; do
+              current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty')"
+              [ -n "$current_digest" ] && break
+              sleep $(( attempt * 5 ))
+            done
+            if [ -z "$current_digest" ]; then
+              echo "::error::${ref} did not resolve after three attempts: the registry did not answer, or the tag is gone. The pin itself is unchanged."
+              status=1
+              continue
+            fi
             if [ "$pinned_digest" != "$current_digest" ]; then
               echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
               status=1
