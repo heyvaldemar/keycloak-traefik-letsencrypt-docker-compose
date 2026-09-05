@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.6.0] - 2026-09-04
+
+### Added
+
+- **A shutdown grace period for PostgreSQL.** Docker stops a container with
+  SIGTERM and ten seconds, then SIGKILL. That default is not always enough:
+  PostgreSQL has a checkpoint to write, MariaDB has InnoDB to flush, and Redis
+  saves its dataset on the way out. Killed halfway, the next start does crash
+  recovery, and a Redis holding another application's file locks leaves them
+  behind for a person to clear by hand. Sixty seconds now, overridable per
+  service with `<PREFIX>_STOP_GRACE_PERIOD` in `.env`. The backup sidecar is
+  deliberately left alone: its failure mode is a truncated dump file, which a
+  longer grace period does not fix.
+
 ## [1.5.0] - 2026-09-03
 
 ### Added
@@ -357,7 +371,8 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 
 [1.3.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.3.0
 [1.4.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.4.0
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.4.0...v1.5.0
 [1.2.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...v1.1.1
