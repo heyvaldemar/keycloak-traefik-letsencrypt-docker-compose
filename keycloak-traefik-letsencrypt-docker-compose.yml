@@ -297,12 +297,13 @@ services:
       while true; do
         BACKUP_FILE="$$KEYCLOAK_POSTGRES_BACKUPS_PATH/$$KEYCLOAK_POSTGRES_BACKUP_NAME-$$(date +%Y-%m-%d_%H-%M-%S).gz";
         echo "[$$(date -Iseconds)] Starting backup to $$BACKUP_FILE";
-        if pg_dump -h postgres -p 5432 -d "$$KEYCLOAK_DB_NAME" -U "$$KEYCLOAK_DB_USER" | gzip > "$$BACKUP_FILE"; then
+        if pg_dump -h postgres -p 5432 -d "$$KEYCLOAK_DB_NAME" -U "$$KEYCLOAK_DB_USER" | gzip > "$$BACKUP_FILE.partial"; then
+          mv "$$BACKUP_FILE.partial" "$$BACKUP_FILE";
           SIZE=$$(stat -c %s "$$BACKUP_FILE" 2>/dev/null || echo ?);
           echo "[$$(date -Iseconds)] Backup OK: $$BACKUP_FILE ($$SIZE bytes)";
         else
           echo "[$$(date -Iseconds)] Backup FAILED — renaming partial file to .failed for diagnosis" >&2;
-          mv "$$BACKUP_FILE" "$${BACKUP_FILE}.failed" 2>/dev/null || true;
+          mv "$$BACKUP_FILE.partial" "$$BACKUP_FILE.failed" 2>/dev/null || true;
         fi;
         if [ "$${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
           find "$$KEYCLOAK_POSTGRES_BACKUPS_PATH" -type f -name "$${KEYCLOAK_POSTGRES_BACKUP_NAME}-*.gz" -mtime "+$${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}" -delete;
