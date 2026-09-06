@@ -1,5 +1,12 @@
-# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
-
+# Keeps the pinned GitHub Actions current. Every workflow in this repository
+# pins its actions to a commit SHA, which is what makes a supply-chain attack
+# on a tag harmless here — and also what makes them go stale silently, because
+# a pinned SHA never moves on its own.
+#
+# GROUPED INTO ONE PULL REQUEST, deliberately. Ungrouped, a week where four
+# actions publish releases arrives as four pull requests per repository, and
+# across the fleet that is a review queue nobody reads to the end. One request
+# per repository per week is a queue that gets read.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -7,17 +14,8 @@ updates:
     schedule:
       interval: "weekly"
     groups:
-      actions-minor-patch:
+      github-actions:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-# NOTE: no `docker` ecosystem here on purpose. Dependabot's docker ecosystem
-# only parses Dockerfiles and compose files with literal `image:` values —
-# this repo's compose file uses `image: ${VAR}` with the pins living in
-# .env.example, which Dependabot cannot see. The earlier `docker` entry
-# scanned nothing and quietly let the Keycloak pin go stale (issue #40).
-# Pin freshness is enforced instead by the weekly `check-pin-freshness` job
-# in .github/workflows/deployment-verification.yml.
+    commit-message:
+      prefix: "ci"
