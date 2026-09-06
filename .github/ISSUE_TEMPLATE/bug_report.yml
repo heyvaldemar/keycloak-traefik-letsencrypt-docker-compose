@@ -1,0 +1,73 @@
+name: Something does not work
+description: A stack that will not start, a service that will not stay up, a backup that is not produced.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Four of the five questions below exist because the answer usually
+        contains the problem. The one that matters most is the last: the
+        output, unedited.
+
+  - type: input
+    id: version
+    attributes:
+      label: Which version
+      description: The tag or release you are on, or the output of `git rev-parse --short HEAD`.
+      placeholder: "v1.6.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: What you ran
+      description: The exact command, including the `-f` and `-p` arguments.
+      placeholder: docker compose -f app-docker-compose.yml -p app up -d
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: The output, unedited
+      description: |
+        `docker compose -p <project> logs --tail 200` and, if a container is
+        unhealthy, `docker inspect <container> --format '{{json .State.Health}}'`.
+
+        Redact passwords and hostnames; leave everything else. A trimmed log
+        usually has the line that explains it in the part that was trimmed.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Your .env, with the secrets removed
+      description: Say so if you did not copy it from `.env.example` — that is often the answer.
+      render: shell
+
+  - type: input
+    id: docker
+    attributes:
+      label: Docker and Compose versions
+      description: "`docker version --format '{{.Server.Version}}'` and `docker compose version --short`. Compose below v2.5 cannot read the nested image pins these templates use."
+      placeholder: "28.1.1 / 2.35.1"
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: Host
+      description: OS, architecture, and whether it is behind a proxy or a tunnel.
+      placeholder: "Ubuntu 24.04, arm64, behind Cloudflare"

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/security/policy
+    about: Do not open a public issue for a vulnerability. The security policy has the reporting address and the PGP key.
