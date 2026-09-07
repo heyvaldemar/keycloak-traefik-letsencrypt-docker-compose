@@ -60,6 +60,31 @@ if [ "$new_major" != "$cur_major" ] && [ "$ALLOW_MAJOR" != "true" ]; then
   exit 3
 fi
 
+# NEW VARIABLES SINCE YOUR VERSION. An update can add a required variable,
+# and `docker compose up` would then stop with a message naming it - after
+# the checkout, with the tree already on the new tag. Better to say so here,
+# before anything has moved. Names only, never values.
+if [ -n "${COMPOSE_FILES+x}" ]; then _files=("${COMPOSE_FILES[@]}"); else _files=("$COMPOSE_FILE"); fi
+_new="$(comm -13 <(git show "HEAD:.env.example" 2>/dev/null | grep -oE '^[A-Z0-9_]+=' | tr -d '=' | sort -u) \
+               <(git show "$latest:.env.example" 2>/dev/null | grep -oE '^[A-Z0-9_]+=' | tr -d '=' | sort -u))"
+if [ -n "$_new" ]; then
+  echo "new variables in .env.example since $current:"
+  while IFS= read -r _k; do echo "  $_k"; done <<<"$_new"
+  _required=""
+  for _f in "${_files[@]}"; do
+    _required="$_required $(git show "$latest:$_f" 2>/dev/null | grep -oE '\$\{[A-Z0-9_]+:\?' | sed -E 's/^\$\{//; s/:\?$//' | tr '\n' ' ')"
+  done
+  _missing=""
+  for _k in $_new; do
+    case " $_required " in *" $_k "*) grep -qE "^${_k}=." .env 2>/dev/null || _missing="$_missing $_k" ;; esac
+  done
+  if [ -n "$_missing" ]; then
+    echo "required in $latest and not set in .env:$_missing" >&2
+    echo "see .env.example at $latest for what each one is; nothing was changed" >&2
+    [ "$DRY_RUN" = "true" ] || exit 4
+  fi
+fi
+
 echo "updating $current -> $latest"
 if [ "$DRY_RUN" = "true" ]; then
   git log --oneline "HEAD..$latest^{commit}" | sed 's/^/  would apply: /'
