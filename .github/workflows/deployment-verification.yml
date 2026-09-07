@@ -175,6 +175,9 @@ jobs:
           exit "$status"
 
       - name: Compare pinned Keycloak version against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        if: always()
         run: |
           pin="$(grep -m1 -oE '\$\{KEYCLOAK_IMAGE_TAG:-.*' keycloak-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
           ref="${pin%%@*}"
@@ -191,6 +194,9 @@ jobs:
           echo "Keycloak pin ${pinned_version} matches the latest release"
 
       - name: Compare pinned Traefik minor against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        if: always()
         run: |
           pin="$(grep -m1 -oE '\$\{TRAEFIK_IMAGE_TAG:-.*' keycloak-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
           ref="${pin%%@*}"
