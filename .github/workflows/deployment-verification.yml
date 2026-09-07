@@ -224,7 +224,7 @@ jobs:
     # on a workflow that has shellcheck/actionlint errors. scan-trivy runs
     # in parallel (not a dependency) since findings don't block deployment.
     needs: lint
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
 
@@ -270,6 +270,48 @@ jobs:
           KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
           EOF
           echo "Generated ephemeral .env for CI run"
+
+      - name: Upgrade drill — the previous release comes up first, on the volumes this run will upgrade
+        # A fresh stack proves the new image starts. It proves nothing about the
+        # data a deployed host already has: whether the new database image accepts
+        # the old data directory, whether the application's migrations run on a
+        # populated schema. So the previous release is started first, on this
+        # project's volumes, and the ordinary `up -d` below then recreates the
+        # changed containers on top of it - which is exactly what `git pull &&
+        # docker compose up -d` does on a deployed host. Every smoke check that
+        # follows judges the upgraded stack, not a fresh one.
+        run: |
+          prev="$(git ls-remote --tags --sort=-v:refname origin 'v*' | grep -v '\^{}' | head -1 | sed 's|.*refs/tags/||')"
+          if [ -z "$prev" ]; then
+            echo "no previous release: nothing to upgrade from, the fresh start below is the whole test"
+            exit 0
+          fi
+          git fetch --depth=1 --quiet origin "refs/tags/$prev:refs/tags/$prev"
+          if git diff --quiet "$prev" -- "$DOCKER_COMPOSE_FILE"; then
+            echo "the compose file is unchanged since $prev: nothing to drill"
+            exit 0
+          fi
+          git show "$prev:$DOCKER_COMPOSE_FILE" > .upgrade-drill-previous.yml
+          echo "starting $prev on this project's volumes"
+          docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" up -d
+          # Healthy means: every container is running and healthy (or running
+          # with no health check), or exited 0 (a one-shot init container).
+          bad=""
+          for _ in $(seq 1 60); do
+            bad="$(docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" ps -a --format json \
+              | jq -rs '[.[] | select((.State == "running" and (.Health == "" or .Health == "healthy")) or (.State == "exited" and .ExitCode == 0) | not)] | map("\(.Service):\(.State)/\(.Health)") | join(" ")')"
+            [ -z "$bad" ] && break
+            sleep 10
+          done
+          if [ -n "$bad" ]; then
+            echo "::error::the previous release ($prev) did not come up with this run's .env: $bad. Either the variable contract changed - then the changelog must say so - or $prev was never green here."
+            docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" logs --tail 80
+            exit 1
+          fi
+          echo "$prev is up and healthy; stopping it and keeping its volumes"
+          docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" down
+          rm -f .upgrade-drill-previous.yml
+          echo "the start below is now an upgrade from $prev"
 
       - name: Start up services using Docker Compose
         run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d
