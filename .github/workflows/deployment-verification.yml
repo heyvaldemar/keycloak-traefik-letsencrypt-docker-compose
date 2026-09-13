@@ -187,11 +187,24 @@ jobs:
             echo "::error::Could not determine the latest Keycloak release from the GitHub API"
             exit 1
           fi
-          if [ "$pinned_version" != "$latest" ]; then
+          # ORDER, NOT INEQUALITY. `!=` calls any difference "behind", including
+          # being ahead, and GitHub's releases/latest is the most recently
+          # PUBLISHED release rather than the highest version. A project that
+          # ships a maintenance release for an older branch after a newer one
+          # then fails this check every day with a message asserting a direction
+          # nothing here established. Nextcloud's pinned 34.0.3 was reported as
+          # behind 32.0.15 until this was written. The leading v is stripped
+          # before comparing because the two sides do not always carry it, and
+          # sort -V is used because a string compare puts 3.10 below 3.7.
+          p_cmp="${pinned_version#v}"; l_cmp="${latest#v}"
+          if [ "$p_cmp" = "$l_cmp" ]; then
+            echo "Keycloak pin ${pinned_version} matches the latest release"
+          elif [ "$(printf '%s\n%s\n' "$p_cmp" "$l_cmp" | sort -V | head -1)" = "$p_cmp" ]; then
             echo "::error::Keycloak pin is behind: pinned ${pinned_version}, latest release is ${latest}"
             exit 1
+          else
+            echo "Keycloak pin ${pinned_version} is ahead of the published ${latest}, which is what a maintenance release for an older branch looks like"
           fi
-          echo "Keycloak pin ${pinned_version} matches the latest release"
 
       - name: Compare pinned Traefik minor against the latest release
         # Runs even when the digest comparison above failed, so one run
