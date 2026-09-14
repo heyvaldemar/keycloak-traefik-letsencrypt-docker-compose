@@ -14,13 +14,19 @@ on:
     workflows: ["Deployment Verification"]
     types: [completed]
 
+# READ AT THE TOP, WRITE ONLY WHERE IT IS USED. A top-level block applies to
+# every job in the file, including ones added later; OpenSSF Scorecard scores
+# that as Token-Permissions 0/10 and it is right to. The merge job below is
+# the only thing here that writes anything.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   merge:
     name: Merge the update if its verification passed
+    permissions:
+      contents: write
+      pull-requests: write
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request'
