@@ -64,7 +64,6 @@ jobs:
     # tab where they can be triaged and fixed via Dependabot upstream-digest
     # bumps. A hard block here would cause CI failures on every new CVE
     # disclosure, which isn't actionable inside this PR.
-    continue-on-error: true
     permissions:
       contents: read
       security-events: write
@@ -118,6 +117,12 @@ jobs:
           output: trivy-${{ matrix.name }}.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          # FINDINGS DO NOT FAIL THIS STEP; A SCAN THAT CANNOT FINISH DOES.
+          # Stated here rather than left to the action's default, because
+          # this job no longer carries continue-on-error and the difference
+          # now decides whether a red run means a new CVE upstream or a
+          # scanner that died before it could report one.
+          exit-code: "0"
           skip-files: ${{ matrix.skip_files }}
 
       - name: Upload Trivy SARIF (${{ matrix.name }}) to GitHub Security
