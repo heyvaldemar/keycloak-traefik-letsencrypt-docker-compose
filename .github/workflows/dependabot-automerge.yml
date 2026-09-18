@@ -27,6 +27,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # To dispatch the verification on main once the merge is in.
+      actions: write
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request'
@@ -37,6 +39,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
+          VERIFY: ${{ github.event.workflow_run.path }}
         run: |
           # The pull request is found from the commit rather than passed in:
           # workflow_run carries the run, not the pull request that caused it.
@@ -53,3 +56,15 @@ jobs:
           # every week, and a job that fails every week is one nobody reads.
           gh pr merge "$pr" --repo "$REPO" --squash --delete-branch \
             || gh pr merge "$pr" --repo "$REPO" --merge --delete-branch
+          # THE MERGE IS PUSHED WITH GITHUB_TOKEN, AND GITHUB RUNS NO WORKFLOWS
+          # FOR PUSHES MADE WITH IT. So main would land with no checks on its
+          # head: the pull request was verified, the merge result was not, and
+          # the repository page would show its latest commit with no tick. On
+          # 2026-09-17 that was fourteen repositories out of ninety-four, up
+          # from four two days earlier, growing with every merge.
+          #
+          # workflow_dispatch is the documented exception to that rule. The
+          # verification this job was waiting on is asked to run again, on main
+          # as merged. The file to dispatch comes from the event, not a guess.
+          gh workflow run "$(basename "$VERIFY")" --repo "$REPO" --ref main
+          echo "verification dispatched on main as merged"
