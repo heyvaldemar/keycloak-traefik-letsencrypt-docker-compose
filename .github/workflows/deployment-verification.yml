@@ -8,7 +8,7 @@ on:
     branches:
       - main
   schedule:
-    # Weekly rebuild to catch upstream image drift (new Traefik, Keycloak,
+    # Daily rebuild to catch upstream image drift (new Traefik, Keycloak,
     # or Postgres patch releases that break deployment).
     - cron: "0 6 * * *"
   workflow_dispatch:
@@ -130,110 +130,6 @@ jobs:
         with:
           sarif_file: trivy-${{ matrix.name }}.sarif
           category: trivy-${{ matrix.name }}
-
-  check-pin-freshness:
-    name: Check pinned images for upstream drift
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # Scheduled + manual dispatch only. A new upstream release is not
-    # actionable inside an unrelated PR, and failing every PR the day a new
-    # Keycloak ships trains everyone to ignore red CI. On the cron the
-    # failure lands as a workflow-failure notification to the maintainer,
-    # which is the point: a stale pin must not sit unnoticed. Dependabot's
-    # docker ecosystem cannot see these pins (they are compose interpolation
-    # defaults in the x-images block, not Dockerfile literals), so this job
-    # is the actual tracking mechanism.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Compare pinned digests against what each tag resolves to now
-        run: |
-          status=0
-          for var in TRAEFIK_IMAGE_TAG KEYCLOAK_POSTGRES_IMAGE_TAG KEYCLOAK_IMAGE_TAG; do
-            pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" keycloak-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
-            ref="${pin%%@*}"
-            pinned_digest="${pin##*@}"
-            # Three attempts: an unanswered registry lookup used to leave this empty,
-            # and the comparison below then reported it as drift.
-            current_digest=""
-            for attempt in 1 2 3; do
-              current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty')"
-              [ -n "$current_digest" ] && break
-              sleep $(( attempt * 5 ))
-            done
-            if [ -z "$current_digest" ]; then
-              echo "::error::${ref} did not resolve after three attempts: the registry did not answer, or the tag is gone. The pin itself is unchanged."
-              status=1
-              continue
-            fi
-            if [ "$pinned_digest" != "$current_digest" ]; then
-              echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
-              status=1
-            else
-              echo "${var} OK (${ref})"
-            fi
-          done
-          exit "$status"
-
-      - name: Compare pinned Keycloak version against the latest release
-        # Runs even when the digest comparison above failed, so one run
-        # reports every problem it can see instead of one per day.
-        if: always()
-        run: |
-          pin="$(grep -m1 -oE '\$\{KEYCLOAK_IMAGE_TAG:-.*' keycloak-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
-          ref="${pin%%@*}"
-          pinned_version="${ref##*:}"
-          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/keycloak/keycloak/releases/latest | jq -r .tag_name)"
-          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
-            echo "::error::Could not determine the latest Keycloak release from the GitHub API"
-            exit 1
-          fi
-          # ORDER, NOT INEQUALITY. `!=` calls any difference "behind", including
-          # being ahead, and GitHub's releases/latest is the most recently
-          # PUBLISHED release rather than the highest version. A project that
-          # ships a maintenance release for an older branch after a newer one
-          # then fails this check every day with a message asserting a direction
-          # nothing here established. Nextcloud's pinned 34.0.3 was reported as
-          # behind 32.0.15 until this was written. The leading v is stripped
-          # before comparing because the two sides do not always carry it, and
-          # sort -V is used because a string compare puts 3.10 below 3.7.
-          p_cmp="${pinned_version#v}"; l_cmp="${latest#v}"
-          if [ "$p_cmp" = "$l_cmp" ]; then
-            echo "Keycloak pin ${pinned_version} matches the latest release"
-          elif [ "$(printf '%s\n%s\n' "$p_cmp" "$l_cmp" | sort -V | head -1)" = "$p_cmp" ]; then
-            echo "::error::Keycloak pin is behind: pinned ${pinned_version}, latest release is ${latest}"
-            exit 1
-          else
-            echo "Keycloak pin ${pinned_version} is ahead of the published ${latest}, which is what a maintenance release for an older branch looks like"
-          fi
-
-      - name: Compare pinned Traefik minor against the latest release
-        # Runs even when the digest comparison above failed, so one run
-        # reports every problem it can see instead of one per day.
-        if: always()
-        run: |
-          pin="$(grep -m1 -oE '\$\{TRAEFIK_IMAGE_TAG:-.*' keycloak-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
-          ref="${pin%%@*}"
-          pinned_minor="${ref##*:}"
-          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"
-          latest="${latest#v}"
-          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
-            echo "::error::Could not determine the latest Traefik release from the GitHub API"
-            exit 1
-          fi
-          case "$latest" in
-            "$pinned_minor".*)
-              echo "Traefik pin ${pinned_minor} matches the latest release line (${latest})"
-              ;;
-            *)
-              echo "::error::Traefik pin is behind: pinned minor ${pinned_minor}, latest release is ${latest}"
-              exit 1
-              ;;
-          esac
 
   deploy-and-test:
     name: docker compose up + HTTPS + Traefik dashboard smoke
