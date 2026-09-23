@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed restore was reported as completed.** `psql` ran without
+  `ON_ERROR_STOP`, so a dump that stopped loading half-way still ended in
+  "Restore completed" and a healthy-looking Keycloak on a partial database; a
+  failure in `dropdb` left Keycloak stopped. The restore now stops at the first
+  failed statement, prints the rollback command for the pre-restore snapshot,
+  and starts Keycloak again whatever happens.
+- **CI never ran the restore script.** The end-to-end test restored with its
+  own drop/create/load, so the script a person runs on their worst day was not
+  the one that passed. The test now runs `keycloak-restore-database.sh` itself,
+  answering its two prompts on stdin, and requires the marker written after the
+  backup to be gone.
+
 ### Changed
 
 - **The freshness check has its own workflow, Pin Freshness.** It ran inside Deployment Verification, whose badge is the one at the top of this README. Across the fleet, nine red runs in ten were a pin one version behind - which the fleet's triage moves within the day - and a reader cannot tell that from a stack that does not boot. The badge now says whether the stack boots. The job itself is unchanged.

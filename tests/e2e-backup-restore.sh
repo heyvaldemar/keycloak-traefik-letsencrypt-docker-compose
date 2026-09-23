@@ -280,10 +280,8 @@ test_restore_roundtrip() {
   # End-to-end proof that restore actually replaces DB state (not a no-op):
   #   1. Snapshot the earliest backup (captured before any test mutations).
   #   2. Insert a marker row; verify it is present in the live DB.
-  #   3. Drop + recreate + restore from the earliest backup directly via
-  #      docker exec (bypassing the interactive DESTROY prompt in
-  #      keycloak-restore-database.sh — the prompt is covered by PR #21's
-  #      safety guards, not by this test).
+  #   3. Restore the earliest backup with keycloak-restore-database.sh,
+  #      answering its prompts on stdin.
   #   4. Verify marker is absent — restore truly replaced the DB state.
   local baseline
   baseline=$(list_backups | head -1)
@@ -303,18 +301,14 @@ test_restore_roundtrip() {
     return 1
   fi
 
-  echo "  restoring baseline (dropdb --force + createdb + gunzip | psql)"
-  # `--force` is required (Postgres 13+; available in postgres:16) because
-  # Keycloak keeps an active connection to keycloakdb via its JDBC pool.
-  # Without it, dropdb fails with "database ... is being accessed by other
-  # users". The production restore script (keycloak-restore-database.sh)
-  # avoids the race by stopping Keycloak first; this test exercises the
-  # underlying primitives directly and uses --force to terminate live
-  # backends instead.
-  if ! backups_sh "dropdb --force -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
-      && createdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
-      && gunzip -c $baseline | psql -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME > /dev/null"; then
-    fail "restore commands failed"
+  # THE SHIPPED SCRIPT, NOT A COPY OF ITS COMMANDS. This used to run the
+  # drop/create/load itself, so the script a person runs on their worst day,
+  # with its snapshot, its DESTROY prompt and its health wait, was never run
+  # here. The two prompts are answered on stdin: the file name, then DESTROY.
+  echo "  restoring the baseline with ./keycloak-restore-database.sh"
+  if ! printf '%s\nDESTROY\n' "$(basename "$baseline")" \
+      | COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" ./keycloak-restore-database.sh; then
+    fail "the shipped restore script failed"
     return 1
   fi
 

@@ -19,7 +19,8 @@
 #      If either check fails, prints the command to recover from the
 #      pre-restore snapshot and exits non-zero.
 #
-# Interactive by design. Safe to Ctrl-C at any prompt before DESTROY is
+# Interactive by design; CI answers the two prompts on stdin and runs this
+# exact file. Safe to Ctrl-C at any prompt before DESTROY is
 # typed — no changes are made until after confirmation.
 #
 # Make the script executable and run from the repository root (where `.env`
@@ -160,16 +161,37 @@ if ! docker exec "$KEYCLOAK_BACKUPS_CONTAINER" sh -c \
 fi
 echo "    Snapshot created."
 
+rollback_hint() {
+  echo
+  echo "ROLLBACK available: the pre-restore snapshot is still in ${SNAPSHOT_PATH}" >&2
+  echo "inside container ${KEYCLOAK_BACKUPS_CONTAINER}. To recover the pre-restore state:" >&2
+  echo >&2
+  echo "    docker stop $KEYCLOAK_CONTAINER" >&2
+  echo "    docker exec $KEYCLOAK_BACKUPS_CONTAINER sh -c \\" >&2
+  echo "      'dropdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \\" >&2
+  echo "       && createdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \\" >&2
+  echo "       && gunzip -c $SNAPSHOT_PATH | psql -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME'" >&2
+  echo "    docker start $KEYCLOAK_CONTAINER" >&2
+}
+
 # --- Perform the restore ---
 
 echo "--> Stopping Keycloak..."
 docker stop "$KEYCLOAK_CONTAINER" > /dev/null
+# Whatever happens from here, Keycloak is started again on the way out.
+trap 'docker start "$KEYCLOAK_CONTAINER" > /dev/null 2>&1 || true' EXIT
 
 echo "--> Restoring database from ${SELECTED_BACKUP}..."
-docker exec "$KEYCLOAK_BACKUPS_CONTAINER" sh -c \
-  "dropdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
+# ON_ERROR_STOP: without it psql reports success after any failed statement,
+# and this script used to print "Restore completed" over a half-loaded dump.
+if ! docker exec "$KEYCLOAK_BACKUPS_CONTAINER" sh -c \
+  "set -o pipefail; dropdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
   && createdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
-  && gunzip -c ${BACKUP_PATH}${SELECTED_BACKUP} | psql -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME"
+  && gunzip -c ${BACKUP_PATH}${SELECTED_BACKUP} | psql -q -v ON_ERROR_STOP=1 -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME > /dev/null"; then
+  echo "Error: the restore failed part-way." >&2
+  rollback_hint
+  exit 1
+fi
 
 echo "    Restore completed."
 
@@ -189,18 +211,6 @@ for _ in $(seq 1 24); do
   sleep 5
 done
 
-rollback_hint() {
-  echo
-  echo "ROLLBACK available: the pre-restore snapshot is still in ${SNAPSHOT_PATH}" >&2
-  echo "inside container ${KEYCLOAK_BACKUPS_CONTAINER}. To recover the pre-restore state:" >&2
-  echo >&2
-  echo "    docker stop $KEYCLOAK_CONTAINER" >&2
-  echo "    docker exec $KEYCLOAK_BACKUPS_CONTAINER sh -c \\" >&2
-  echo "      'dropdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \\" >&2
-  echo "       && createdb -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \\" >&2
-  echo "       && gunzip -c $SNAPSHOT_PATH | psql -h postgres -p 5432 -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME'" >&2
-  echo "    docker start $KEYCLOAK_CONTAINER" >&2
-}
 
 if [[ "$HEALTH" != "healthy" ]]; then
   echo "Warning: Keycloak did not reach healthy state within 2 minutes (last status: $HEALTH)." >&2
