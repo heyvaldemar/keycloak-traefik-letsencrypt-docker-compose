@@ -78,7 +78,8 @@ wait_backup_after_stamp() {  # directory variable, suffix, log word
   dir="$(env_of "$1")"; stamp="$dir/.dr-stamp"
   while [ "$waited" -lt 600 ]; do
     f="$(newest_after "$dir" "$2" "$stamp")"
-    if [ -n "$f" ] && docker logs "$(cid backups)" 2>&1 | grep -qF "backup OK: $f"; then
+    # Case-insensitive: Keycloak's loop says "Backup OK", the others "backup OK".
+    if [ -n "$f" ] && docker logs "$(cid backups)" 2>&1 | grep -qiF "backup OK: $f"; then
       say "backup after the markers: $f"; return 0
     fi
     sleep 5; waited=$((waited + 5))
