@@ -128,6 +128,13 @@ after() {
   if [ -z "$to" ] || ! git diff --quiet "$to" HEAD -- "$DOCKER_COMPOSE_FILE"; then to="main"; fi
   MARK="$(cat "$OUT/marker")"
   cp "$OUT/env" .env
+  # THE NEW HOST'S BACKUP LOOP STARTS WITH THE STACK. With CI's 15-second
+  # warm-up its first cycle wrote an empty backup into the same directory
+  # before the restore ran, the drill restored "the newest file", which was
+  # that one, and the file names are only minute-precise, so it can even
+  # overwrite an imported backup of the same name. The first Gitea run failed
+  # exactly so. A restored .env carries the documented 30-minute warm-up.
+  sed -i -E 's/^([A-Z_]*BACKUP_INIT_SLEEP)=.*/\1=30m/' .env
   say "a clean machine: starting $to empty"
   docker compose -f "$DOCKER_COMPOSE_FILE" -p "$PROJECT" up -d
   wait_healthy "$DOCKER_COMPOSE_FILE"
@@ -136,11 +143,13 @@ after() {
     docker cp "$OUT/$v/." "$(cid backups):$dir/"
   done
   tr="$(date +%s)"
-  dbf="$(bk "ls -1t \"\$$DB_DIR_ENV\" | grep -E '\\.gz\$' | grep -vE '\\.tar\\.gz\$' | head -n 1")"
+  # The newest of the files brought from the dead host, by name: the names
+  # carry the time, and a file this machine wrote itself is not a candidate.
+  dbf="$(find "$OUT/$DB_DIR_ENV" -maxdepth 1 -type f -name '*.gz' ! -name '*.tar.gz' -printf '%f\n' | sort | tail -n 1)"
   say "restoring the database from $dbf"
   F="$dbf" bash -c "$DB_RESTORE"
   if [ -n "${DATA_DIR_ENV:-}" ]; then
-    dataf="$(bk "ls -1t \"\$$DATA_DIR_ENV\" | grep -E '\\.tar\\.gz\$' | head -n 1")"
+    dataf="$(find "$OUT/$DATA_DIR_ENV" -maxdepth 1 -type f -name '*.tar.gz' -printf '%f\n' | sort | tail -n 1)"
     say "restoring the data from $dataf"
     F="$dataf" bash -c "$DATA_RESTORE"
   fi
