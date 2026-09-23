@@ -1,0 +1,184 @@
+name: Clean-Machine Restore
+
+# THE HOST IS GONE. What an operator has left is what they kept off it: the
+# backup files and the .env. This drill takes those from one runner that ran
+# the PREVIOUS release, and brings the CURRENT release back from them on a
+# second runner that has never run this stack - then measures how long that
+# took, from the first command on the empty machine to the application
+# answering with the data it had. The ordinary deployment verification restores
+# on the same host and the same version; this is the case it cannot reach.
+on:
+  schedule:
+    - cron: "40 4 * * 0"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tests/dr-drill.sh"
+      - ".github/workflows/dr-drill.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dr-drill-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  before:
+    name: The host that dies runs the previous release and is backed up
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NETWORK_ONE: keycloak-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: keycloak-traefik-letsencrypt-docker-compose.yml
+      APP_HOSTNAME: keycloak.heyvaldemar.net
+      APP_TRAEFIK_HOSTNAME: traefik.keycloak.heyvaldemar.net
+      COMPOSE_PROJECT_NAME: keycloak
+      APP_URL: https://$APP_HOSTNAME/
+      APP_OK: "200|302|303"
+      DB_ENGINE: postgres
+      DB_HOST: postgres
+      DB_NAME_ENV: KEYCLOAK_DB_NAME
+      DB_USER_ENV: KEYCLOAK_DB_USER
+      DB_PASS_ENV: ""
+      DB_DIR_ENV: KEYCLOAK_POSTGRES_BACKUPS_PATH
+      DATA_DIR_ENV: ""
+      DATA_PATH_ENV: ""
+      DB_RESTORE: 'printf "%s\nDESTROY\n" "$F" | ./keycloak-restore-database.sh'
+      DATA_RESTORE: ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: The release this host was running
+        # The newest release whose stack differs from main's, so the restore
+        # below crosses a version: an old backup brought back into the release
+        # that replaced it. Picking by tag order alone chose main's own release
+        # whenever main carried a commit that did not touch the stack, and the
+        # first run "crossed" from v1.9.1 to v1.9.1.
+        run: |
+          from=""
+          for t in $(git tag --sort=-v:refname --list 'v*'); do
+            if ! git diff --quiet "$t" HEAD -- "$DOCKER_COMPOSE_FILE"; then from="$t"; break; fi
+          done
+          [ -n "$from" ] || { echo "::error::no earlier release with a different stack to take the backup on"; exit 1; }
+          echo "DR_FROM=$from" >> "$GITHUB_ENV"
+          echo "the backup is taken on $from"
+
+      - name: Create necessary Docker networks
+        run: |
+          docker network create "$NETWORK_ONE" || true
+          docker network create "$NETWORK_TWO" || true
+
+      - name: Generate test .env with ephemeral credentials
+        # The real .env is gitignored. CI generates throwaway credentials so
+        # `docker compose up` succeeds without committing secrets to the repo.
+        # No *_IMAGE_TAG values on purpose: the compose file's x-images
+        # defaults apply, so CI always tests exactly the pins the template
+        # ships to users who run it unmodified.
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_LOG_LEVEL=WARN
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_DB_NAME=keycloakdb
+          KEYCLOAK_DB_USER=keycloakdbuser
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_USERNAME=keycloakadmin
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=${APP_HOSTNAME}
+          KEYCLOAK_BACKUP_INIT_SLEEP=30m
+          KEYCLOAK_BACKUP_INTERVAL=24h
+          KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS=7
+          KEYCLOAK_POSTGRES_BACKUPS_PATH=/srv/keycloak-postgres/backups
+          KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
+          EOF
+          echo "Generated ephemeral .env for CI run"
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
+
+      - name: Run the previous release, write the markers, take the backup
+        run: ./tests/dr-drill.sh before
+
+      - name: Keep only what an operator keeps off the host
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dr-offsite
+          path: dr-out
+          retention-days: 1
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f .dr-from.yml -p "$COMPOSE_PROJECT_NAME" logs --tail 200 || true
+
+  after:
+    name: A clean machine brings the current release back from those files
+    needs: before
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NETWORK_ONE: keycloak-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: keycloak-traefik-letsencrypt-docker-compose.yml
+      APP_HOSTNAME: keycloak.heyvaldemar.net
+      APP_TRAEFIK_HOSTNAME: traefik.keycloak.heyvaldemar.net
+      COMPOSE_PROJECT_NAME: keycloak
+      APP_URL: https://$APP_HOSTNAME/
+      APP_OK: "200|302|303"
+      DB_ENGINE: postgres
+      DB_HOST: postgres
+      DB_NAME_ENV: KEYCLOAK_DB_NAME
+      DB_USER_ENV: KEYCLOAK_DB_USER
+      DB_PASS_ENV: ""
+      DB_DIR_ENV: KEYCLOAK_POSTGRES_BACKUPS_PATH
+      DATA_DIR_ENV: ""
+      DATA_PATH_ENV: ""
+      DB_RESTORE: 'printf "%s\nDESTROY\n" "$F" | ./keycloak-restore-database.sh'
+      DATA_RESTORE: ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create necessary Docker networks
+        run: |
+          docker network create "$NETWORK_ONE" || true
+          docker network create "$NETWORK_TWO" || true
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
+
+      - name: The files kept off the dead host
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dr-offsite
+          path: dr-out
+
+      - name: Restore on the clean machine, and time it
+        run: ./tests/dr-drill.sh after
+
+      - name: Keep the measured result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dr-result
+          path: dr-result.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs --tail 200
