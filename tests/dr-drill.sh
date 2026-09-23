@@ -24,6 +24,7 @@
 #   DB_RESTORE     the shipped command, with "$F" for the dump's file name
 #   DATA_RESTORE   the same for the data archive (optional)
 #   DR_FROM        the release the backup is taken on (before only)
+#   DR_DIAG        optional: a command whose output explains a failed answer
 set -Eeuo pipefail
 
 OUT="${DR_OUT:-dr-out}"
@@ -90,6 +91,10 @@ wait_backup_after_stamp() {  # directory variable, suffix, log word
 
 before() {
   local from_file=".dr-from.yml"
+  # The dying host backs up every minute, whatever the copied .env says:
+  # Keycloak's deploy job carries the production 30m/24h, and a drill that
+  # waits a day for its first backup is not a drill.
+  sed -i -E 's/^([A-Z_]*BACKUP_INIT_SLEEP)=.*/\1=15s/; s/^([A-Z_]*BACKUP_INTERVAL)=.*/\1=60s/' .env
   git show "$DR_FROM:$DOCKER_COMPOSE_FILE" > "$from_file"
   say "starting $DR_FROM, the release this host was running"
   docker compose -f "$from_file" -p "$PROJECT" up -d
@@ -155,7 +160,13 @@ after() {
     F="$dataf" bash -c "$DATA_RESTORE"
   fi
   wait_healthy "$DOCKER_COMPOSE_FILE"
-  wait_app 900
+  if ! wait_app 900; then
+    echo "--- what $APP_URL answers:" >&2
+    curl -skL "$APP_URL" | head -c 2000 >&2 || true
+    echo >&2
+    if [ -n "${DR_DIAG:-}" ]; then echo "--- $DR_DIAG" >&2; bash -c "$DR_DIAG" >&2 || true; fi
+    exit 1
+  fi
   t1="$(date +%s)"
 
   local got_row got_file="(no data directory)" ok=true

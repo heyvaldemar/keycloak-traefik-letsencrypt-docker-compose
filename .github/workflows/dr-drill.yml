@@ -48,6 +48,7 @@ jobs:
       DATA_PATH_ENV: ""
       DB_RESTORE: 'printf "%s\nDESTROY\n" "$F" | ./keycloak-restore-database.sh'
       DATA_RESTORE: ''
+      DR_DIAG: ''
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -145,6 +146,7 @@ jobs:
       DATA_PATH_ENV: ""
       DB_RESTORE: 'printf "%s\nDESTROY\n" "$F" | ./keycloak-restore-database.sh'
       DATA_RESTORE: ''
+      DR_DIAG: ''
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
