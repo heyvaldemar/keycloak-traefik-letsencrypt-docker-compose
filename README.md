@@ -160,10 +160,10 @@ cosign verify-blob keycloak-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
 
 slsa-verifier verify-artifact keycloak-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
   --provenance-path keycloak-traefik-letsencrypt-docker-compose-<tag>.intoto.jsonl \
-  --source-uri github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose --source-tag <tag>
+  --source-uri github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose
 ```
 
-The workflow that makes them is [`release-assets.yml`](.github/workflows/release-assets.yml).
+Add `--source-tag <tag>` for a release published after 24 September 2026, which is signed by the run that published it. The five releases before that date were signed by a run started by hand on `main`, so their provenance names the branch, not the tag; the archive is still the tag's tree, and the signature still belongs to this repository's workflow. The workflow that makes them is [`release-assets.yml`](.github/workflows/release-assets.yml).
 
 ## Production checklist
 
