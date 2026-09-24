@@ -70,23 +70,36 @@ wait_healthy() {  # every container running and healthy, or a one-shot that exit
   return 1
 }
 
-newest_after() {  # directory, glob suffix, stamp file: the newest complete file written after the stamp
-  bk "find '$1' -maxdepth 1 -type f -name '*$2' -newer '$3' | sort | tail -n 1"
+cycle_of() {  # the cycle start written into a backup's name: YYYY-MM-DD_HH-MM
+  sed -n 's/.*\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]\).*/\1/p'
 }
 
-wait_backup_after_stamp() {  # directory variable, suffix, log word
-  local dir stamp f waited=0
-  dir="$(env_of "$1")"; stamp="$dir/.dr-stamp"
-  while [ "$waited" -lt 600 ]; do
-    f="$(newest_after "$dir" "$2" "$stamp")"
-    # Case-insensitive: Keycloak's loop says "Backup OK", the others "backup OK".
-    if [ -n "$f" ] && docker logs "$(cid backups)" 2>&1 | grep -qiF "backup OK: $f"; then
-      say "backup after the markers: $f"; return 0
-    fi
+wait_backup_started_after() {  # directory variable, suffix, marker minute, log word
+  # A BACKUP THAT FINISHED AFTER THE MARKERS IS NOT ONE THAT CONTAINS THEM.
+  # Nextcloud's data archive takes minutes: a cycle that started before the
+  # marker file was written finished after it, was newer than the stamp, and
+  # held no marker. The cycle's start is in the file name, so the backup must
+  # be one whose cycle began in a later minute than the markers.
+  local dir f waited=0
+  dir="$(env_of "$1")"
+  while [ "$waited" -lt 900 ]; do
+    for f in $(bk "ls -1 '$dir'" | grep -E "$2\$" | sort -r); do
+      [ "$(printf '%s' "$f" | cycle_of)" \> "$3" ] || continue
+      if docker logs "$(cid backups)" 2>&1 | grep -qiF "backup OK: $dir/$f"; then
+        say "backup started after the markers: $f"; return 0
+      fi
+    done
     sleep 5; waited=$((waited + 5))
   done
-  echo "no $3 backup after the markers within 600s in $dir" >&2
+  echo "no $4 backup started after $3 within 900s in $dir" >&2
   return 1
+}
+
+explain() {  # what a failed restore looks like from the inside
+  echo "--- what $APP_URL answers:" >&2
+  curl -skL "$APP_URL" | head -c 2000 >&2 || true
+  echo >&2
+  if [ -n "${DR_DIAG:-}" ]; then echo "--- $DR_DIAG" >&2; bash -c "$DR_DIAG" >&2 || true; fi
 }
 
 before() {
@@ -105,10 +118,12 @@ before() {
   if [ -n "${DATA_PATH_ENV:-}" ]; then
     bk "printf '%s' '$MARK' > \"\$$DATA_PATH_ENV/.dr-marker\""
   fi
-  bk "touch \"\$$DB_DIR_ENV/.dr-stamp\"${DATA_DIR_ENV:+ \"\$$DATA_DIR_ENV/.dr-stamp\"}"
-  wait_backup_after_stamp "$DB_DIR_ENV" ".gz" "database"
+  local marked
+  marked="$(bk 'date +%Y-%m-%d_%H-%M')"   # the backups container's clock names the files
+  say "markers written at $marked; waiting for backups whose cycle starts later"
+  wait_backup_started_after "$DB_DIR_ENV" "[0-9]\\.gz" "$marked" "database"
   if [ -n "${DATA_DIR_ENV:-}" ]; then
-    wait_backup_after_stamp "$DATA_DIR_ENV" ".tar.gz" "data"
+    wait_backup_started_after "$DATA_DIR_ENV" "\\.tar\\.gz" "$marked" "data"
   fi
   say "exporting what an operator keeps off the host: the backup files and .env"
   mkdir -p "$OUT"
@@ -118,7 +133,6 @@ before() {
     dir="$(env_of "$v")"
     mkdir -p "$OUT/$v"
     docker cp "$(cid backups):$dir/." "$OUT/$v/"
-    rm -f "$OUT/$v/.dr-stamp"
   done
   printf '%s\n' "$MARK" > "$OUT/marker"
   printf '%s\n' "$DR_FROM" > "$OUT/from"
@@ -159,12 +173,8 @@ after() {
     say "restoring the data from $dataf"
     F="$dataf" bash -c "$DATA_RESTORE"
   fi
-  wait_healthy "$DOCKER_COMPOSE_FILE"
-  if ! wait_app 900; then
-    echo "--- what $APP_URL answers:" >&2
-    curl -skL "$APP_URL" | head -c 2000 >&2 || true
-    echo >&2
-    if [ -n "${DR_DIAG:-}" ]; then echo "--- $DR_DIAG" >&2; bash -c "$DR_DIAG" >&2 || true; fi
+  if ! wait_healthy "$DOCKER_COMPOSE_FILE" || ! wait_app 900; then
+    explain
     exit 1
   fi
   t1="$(date +%s)"
