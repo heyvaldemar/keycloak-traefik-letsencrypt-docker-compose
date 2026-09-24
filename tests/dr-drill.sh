@@ -235,6 +235,11 @@ after() {
   say "a clean machine: starting $to empty"
   docker compose -f "$DOCKER_COMPOSE_FILE" -p "$PROJECT" up -d
   wait_healthy "$DOCKER_COMPOSE_FILE"
+  # The empty stack answers before anything is put back: a restore that runs
+  # into an application still initialising is a different failure from a
+  # restore that broke it, and the log should say which.
+  wait_app "${DR_APP_WAIT:-600}" || { explain; exit 1; }
+  say "the empty stack answers; putting the backups back"
   for v in $(dirs); do
     dir="$(env_of "$v")"
     docker cp "$OUT/$v/." "$(cid backups):$dir/"
