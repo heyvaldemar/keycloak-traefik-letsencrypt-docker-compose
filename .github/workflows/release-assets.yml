@@ -22,11 +22,13 @@ name: Release Assets
 #
 #   slsa-verifier verify-artifact <repo>-<tag>.tar.gz \
 #     --provenance-path <repo>-<tag>.intoto.jsonl \
-#     --source-uri github.com/heyvaldemar/<repo> --source-tag <tag>
+#     --source-uri github.com/heyvaldemar/<repo>
 #
-# Runs when a release is published. Started by hand with a tag, it signs an
-# existing release, which is how the releases before this job existed were
-# given the same three files.
+# Runs when a release is published; add --source-tag <tag> to the second
+# command for those, since the run that signed them ran on the tag. Started
+# by hand with a tag, it signs an existing release, which is how the releases
+# before this job existed were given the same three files; those runs ran on
+# main, so their provenance names the branch, and --source-tag refuses it.
 on:
   release:
     types: [published]
@@ -123,5 +125,33 @@ jobs:
     with:
       base64-subjects: ${{ needs.archive.outputs.subjects }}
       provenance-name: ${{ github.event.repository.name }}-${{ needs.archive.outputs.tag }}.intoto.jsonl
-      upload-assets: true
-      upload-tag-name: ${{ needs.archive.outputs.tag }}
+      # Not the generator's own upload: it edits the release to attach the
+      # file, and GitHub refuses that edit with the workflow token when the
+      # release targets a commit rather than a branch, which every release cut
+      # from a verified commit here does. Fourteen repositories found that out
+      # on 2026-09-24. The job below only adds an asset, which is allowed.
+      upload-assets: false
+
+  attach:
+    name: Attach the provenance to the release
+    needs: [archive, provenance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download the signed provenance
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.provenance.outputs.provenance-name }}
+          path: out
+
+      - name: Attach it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.archive.outputs.tag }}
+          NAME: ${{ needs.provenance.outputs.provenance-name }}
+        run: |
+          ls -l out
+          gh release upload "$TAG" "out/$NAME" --clobber
