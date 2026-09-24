@@ -1,0 +1,127 @@
+name: Release Assets
+
+# WHAT A RELEASE CARRIES, AND WHO CAN PROVE IT.
+#
+# A tag is a name, and a name can be moved. Until 24 September 2026 a release
+# here was a tag and its notes, and a person deploying it had nothing to
+# check except that the tag existed. This job gives every release an archive
+# of exactly the tree the tag points at, a signature over it, and a SLSA
+# provenance statement of how it was built, all three made by this workflow
+# on GitHub's runner with a short-lived identity and no stored key:
+#
+#   <repo>-<tag>.tar.gz              git archive of the tag
+#   <repo>-<tag>.tar.gz.sigstore.json  cosign keyless signature (Sigstore bundle)
+#   <repo>-<tag>.intoto.jsonl        SLSA v1 build provenance, by the SLSA generator
+#
+# Verifying, from any machine, with nothing from this repository trusted:
+#
+#   cosign verify-blob <repo>-<tag>.tar.gz \
+#     --bundle <repo>-<tag>.tar.gz.sigstore.json \
+#     --certificate-identity-regexp '^https://github.com/heyvaldemar/<repo>/' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+#
+#   slsa-verifier verify-artifact <repo>-<tag>.tar.gz \
+#     --provenance-path <repo>-<tag>.intoto.jsonl \
+#     --source-uri github.com/heyvaldemar/<repo> --source-tag <tag>
+#
+# Runs when a release is published. Started by hand with a tag, it signs an
+# existing release, which is how the releases before this job existed were
+# given the same three files.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing release tag to give an archive, a signature and provenance"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-assets-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    name: Archive the tag and sign it
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      subjects: ${{ steps.hash.outputs.subjects }}
+    steps:
+      - name: Which tag
+        id: meta
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=${GITHUB_REPOSITORY#*/}-$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Archive exactly what the tag points at
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          NAME: ${{ steps.meta.outputs.name }}
+        run: |
+          mkdir -p out
+          # git archive, not tar of the checkout: no .git, no runner files, and
+          # the same bytes for the same tag on any machine.
+          git archive --format=tar.gz --prefix="$NAME/" -o "out/$NAME.tar.gz" "refs/tags/$TAG"
+          ls -l out
+
+      - name: Sign it, keyless
+        env:
+          NAME: ${{ steps.meta.outputs.name }}
+        run: |
+          cosign sign-blob --yes "out/$NAME.tar.gz" --bundle "out/$NAME.tar.gz.sigstore.json"
+          # Verify what was just signed before publishing it: a signature that
+          # does not verify here would not verify for anyone.
+          cosign verify-blob "out/$NAME.tar.gz" --bundle "out/$NAME.tar.gz.sigstore.json" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+      - name: Hash it for the provenance
+        id: hash
+        env:
+          NAME: ${{ steps.meta.outputs.name }}
+        run: |
+          cd out
+          echo "subjects=$(sha256sum "$NAME.tar.gz" | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Attach the archive and the signature to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          NAME: ${{ steps.meta.outputs.name }}
+        run: gh release upload "$TAG" "out/$NAME.tar.gz" "out/$NAME.tar.gz.sigstore.json" --clobber
+
+  provenance:
+    name: SLSA provenance
+    needs: archive
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    # The SLSA generator must be referenced by tag, not SHA: it verifies its
+    # own reference at run time and refuses a SHA. OpenSSF Scorecard knows
+    # this workflow and does not count it as an unpinned dependency.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.archive.outputs.subjects }}
+      provenance-name: ${{ github.event.repository.name }}-${{ needs.archive.outputs.tag }}.intoto.jsonl
+      upload-assets: true
+      upload-tag-name: ${{ needs.archive.outputs.tag }}

@@ -148,6 +148,23 @@ GitHub Actions are also pinned by commit SHA with `# vX.Y.Z` version comments. D
 
 See [`SECURITY.md`](SECURITY.md) for the disclosure policy.
 
+### Verify what you deploy
+
+Every release from v1.7.7 on carries three files made on GitHub's runner with a short-lived identity and no stored key: `keycloak-traefik-letsencrypt-docker-compose-<tag>.tar.gz`, a `git archive` of exactly the tree the tag points at; `keycloak-traefik-letsencrypt-docker-compose-<tag>.tar.gz.sigstore.json`, a keyless [Sigstore](https://www.sigstore.dev/) signature over it; and `keycloak-traefik-letsencrypt-docker-compose-<tag>.intoto.jsonl`, [SLSA](https://slsa.dev/) build provenance from the SLSA generator. To check them with nothing from this repository trusted:
+
+```bash
+cosign verify-blob keycloak-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
+  --bundle keycloak-traefik-letsencrypt-docker-compose-<tag>.tar.gz.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+slsa-verifier verify-artifact keycloak-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
+  --provenance-path keycloak-traefik-letsencrypt-docker-compose-<tag>.intoto.jsonl \
+  --source-uri github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose --source-tag <tag>
+```
+
+The workflow that makes them is [`release-assets.yml`](.github/workflows/release-assets.yml).
+
 ## Production checklist
 
 Before exposing this to real users, check every box:
