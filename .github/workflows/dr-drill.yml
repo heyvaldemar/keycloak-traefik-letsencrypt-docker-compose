@@ -36,19 +36,23 @@ jobs:
       APP_HOSTNAME: keycloak.heyvaldemar.net
       APP_TRAEFIK_HOSTNAME: traefik.keycloak.heyvaldemar.net
       COMPOSE_PROJECT_NAME: keycloak
-      APP_URL: https://$APP_HOSTNAME/
+      APP_URL: "https://$APP_HOSTNAME/"
       APP_OK: "200|302|303"
-      DB_ENGINE: postgres
-      DB_HOST: postgres
-      DB_NAME_ENV: KEYCLOAK_DB_NAME
-      DB_USER_ENV: KEYCLOAK_DB_USER
+      DB_ENGINE: "postgres"
+      DB_HOST: "postgres"
+      DB_NAME_ENV: "KEYCLOAK_DB_NAME"
+      DB_USER_ENV: "KEYCLOAK_DB_USER"
       DB_PASS_ENV: ""
-      DB_DIR_ENV: KEYCLOAK_POSTGRES_BACKUPS_PATH
+      DB_DIR_ENV: "KEYCLOAK_POSTGRES_BACKUPS_PATH"
       DATA_DIR_ENV: ""
       DATA_PATH_ENV: ""
-      DB_RESTORE: 'printf "%s\nDESTROY\n" "$F" | ./keycloak-restore-database.sh'
-      DATA_RESTORE: ''
-      DR_DIAG: ''
+      DB_FILE_MATCH: ""
+      DATA_FILE_MATCH: ""
+      DB_RESTORE: "printf \"%s\\nDESTROY\\n\" \"$F\" | ./keycloak-restore-database.sh"
+      DATA_RESTORE: ""
+      DR_DIAG: ""
+      DR_IGNORE_SERVICES: ""
+      DR_KEEP: ""
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,13 +64,16 @@ jobs:
         # below crosses a version: an old backup brought back into the release
         # that replaced it. Picking by tag order alone chose main's own release
         # whenever main carried a commit that did not touch the stack, and the
-        # first run "crossed" from v1.9.1 to v1.9.1.
+        # first run "crossed" from v1.9.1 to v1.9.1. A template whose every
+        # release runs the same stack drills its newest one: the host is still
+        # gone, and the page says from and to plainly.
         run: |
           from=""
           for t in $(git tag --sort=-v:refname --list 'v*'); do
             if ! git diff --quiet "$t" HEAD -- "$DOCKER_COMPOSE_FILE"; then from="$t"; break; fi
           done
-          [ -n "$from" ] || { echo "::error::no earlier release with a different stack to take the backup on"; exit 1; }
+          [ -n "$from" ] || from="$(git tag --sort=-v:refname --list 'v*' | head -n 1)"
+          [ -n "$from" ] || { echo "::error::no release to take the backup on"; exit 1; }
           echo "DR_FROM=$from" >> "$GITHUB_ENV"
           echo "the backup is taken on $from"
 
@@ -134,19 +141,23 @@ jobs:
       APP_HOSTNAME: keycloak.heyvaldemar.net
       APP_TRAEFIK_HOSTNAME: traefik.keycloak.heyvaldemar.net
       COMPOSE_PROJECT_NAME: keycloak
-      APP_URL: https://$APP_HOSTNAME/
+      APP_URL: "https://$APP_HOSTNAME/"
       APP_OK: "200|302|303"
-      DB_ENGINE: postgres
-      DB_HOST: postgres
-      DB_NAME_ENV: KEYCLOAK_DB_NAME
-      DB_USER_ENV: KEYCLOAK_DB_USER
+      DB_ENGINE: "postgres"
+      DB_HOST: "postgres"
+      DB_NAME_ENV: "KEYCLOAK_DB_NAME"
+      DB_USER_ENV: "KEYCLOAK_DB_USER"
       DB_PASS_ENV: ""
-      DB_DIR_ENV: KEYCLOAK_POSTGRES_BACKUPS_PATH
+      DB_DIR_ENV: "KEYCLOAK_POSTGRES_BACKUPS_PATH"
       DATA_DIR_ENV: ""
       DATA_PATH_ENV: ""
-      DB_RESTORE: 'printf "%s\nDESTROY\n" "$F" | ./keycloak-restore-database.sh'
-      DATA_RESTORE: ''
-      DR_DIAG: ''
+      DB_FILE_MATCH: ""
+      DATA_FILE_MATCH: ""
+      DB_RESTORE: "printf \"%s\\nDESTROY\\n\" \"$F\" | ./keycloak-restore-database.sh"
+      DATA_RESTORE: ""
+      DR_DIAG: ""
+      DR_IGNORE_SERVICES: ""
+      DR_KEEP: ""
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -157,6 +168,32 @@ jobs:
         run: |
           docker network create "$NETWORK_ONE" || true
           docker network create "$NETWORK_TWO" || true
+
+      - name: Generate test .env with ephemeral credentials
+        # The real .env is gitignored. CI generates throwaway credentials so
+        # `docker compose up` succeeds without committing secrets to the repo.
+        # No *_IMAGE_TAG values on purpose: the compose file's x-images
+        # defaults apply, so CI always tests exactly the pins the template
+        # ships to users who run it unmodified.
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_LOG_LEVEL=WARN
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_DB_NAME=keycloakdb
+          KEYCLOAK_DB_USER=keycloakdbuser
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_USERNAME=keycloakadmin
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=${APP_HOSTNAME}
+          KEYCLOAK_BACKUP_INIT_SLEEP=30m
+          KEYCLOAK_BACKUP_INTERVAL=24h
+          KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS=7
+          KEYCLOAK_POSTGRES_BACKUPS_PATH=/srv/keycloak-postgres/backups
+          KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
+          EOF
+          echo "Generated ephemeral .env for CI run"
 
       - name: Modify /etc/hosts for internal routing
         run: |
