@@ -53,6 +53,7 @@ jobs:
       DR_DIAG: ""
       DR_IGNORE_SERVICES: ""
       DR_KEEP: ""
+      DR_APP_WAIT: ""
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,6 +159,7 @@ jobs:
       DR_DIAG: ""
       DR_IGNORE_SERVICES: ""
       DR_KEEP: ""
+      DR_APP_WAIT: ""
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

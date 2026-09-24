@@ -35,6 +35,8 @@
 #   DB_RESTORE       the shipped command, with "$F" for the dump's file name
 #                    and "$S" for the cycle stamp in it
 #   DATA_RESTORE     the same for the data archive (optional)
+#   DR_APP_WAIT      seconds to wait for the application on the dying host
+#                    (default 600; Mailu's own CI gives its admin twelve minutes)
 #   DR_IGNORE_SERVICES  services whose state does not count (a Beszel agent
 #                    with no key restarts by design; CI ignores it too)
 #   DR_KEEP          paths an operator keeps off the host besides .env, such
@@ -182,7 +184,7 @@ before() {
   say "starting $DR_FROM, the release this host was running"
   docker compose -f "$from_file" -p "$PROJECT" up -d
   wait_healthy "$from_file"
-  wait_app 600
+  wait_app "${DR_APP_WAIT:-600}"
   say "writing the markers"
   [ -z "$DB_ENGINE" ] || mark_write
   mark_file_write
