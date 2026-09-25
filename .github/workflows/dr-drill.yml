@@ -54,6 +54,12 @@ jobs:
       DR_IGNORE_SERVICES: ""
       DR_KEEP: ""
       DR_APP_WAIT: ""
+      DATA_MARK_SUBDIR: ""
+      BACKUPS_SVC: ""
+      EXTRA_DB_SVC: ""
+      EXTRA_DB_DIR_ENV: ""
+      EXTRA_DB_FILE_MATCH: ""
+      EXTRA_DB_RESTORE: ""
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,7 +77,7 @@ jobs:
         run: |
           from=""
           for t in $(git tag --sort=-v:refname --list 'v*'); do
-            if ! git diff --quiet "$t" HEAD -- "$DOCKER_COMPOSE_FILE"; then from="$t"; break; fi
+            if ! git diff --quiet "$t" HEAD -- $DOCKER_COMPOSE_FILE; then from="$t"; break; fi
           done
           [ -n "$from" ] || from="$(git tag --sort=-v:refname --list 'v*' | head -n 1)"
           [ -n "$from" ] || { echo "::error::no release to take the backup on"; exit 1; }
@@ -108,12 +114,10 @@ jobs:
           KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
           EOF
           echo "Generated ephemeral .env for CI run"
-
       - name: Modify /etc/hosts for internal routing
         run: |
           echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
           echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
-
       - name: Run the previous release, write the markers, take the backup
         run: ./tests/dr-drill.sh before
 
@@ -128,7 +132,7 @@ jobs:
 
       - name: Show container logs on failure
         if: failure()
-        run: docker compose -f .dr-from.yml -p "$COMPOSE_PROJECT_NAME" logs --tail 200 || true
+        run: docker compose $(for f in .dr-from-*.yml; do printf ' -f %s' "$f"; done) -p "$COMPOSE_PROJECT_NAME" logs --tail 200 || true
 
   after:
     name: A clean machine brings the current release back from those files
@@ -160,6 +164,12 @@ jobs:
       DR_IGNORE_SERVICES: ""
       DR_KEEP: ""
       DR_APP_WAIT: ""
+      DATA_MARK_SUBDIR: ""
+      BACKUPS_SVC: ""
+      EXTRA_DB_SVC: ""
+      EXTRA_DB_DIR_ENV: ""
+      EXTRA_DB_FILE_MATCH: ""
+      EXTRA_DB_RESTORE: ""
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -196,12 +206,10 @@ jobs:
           KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
           EOF
           echo "Generated ephemeral .env for CI run"
-
       - name: Modify /etc/hosts for internal routing
         run: |
           echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
           echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
-
       - name: The files kept off the dead host
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -222,4 +230,4 @@ jobs:
 
       - name: Show container logs on failure
         if: failure()
-        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs --tail 200
+        run: docker compose $(for f in $DOCKER_COMPOSE_FILE; do printf ' -f %s' "$f"; done) -p "$COMPOSE_PROJECT_NAME" logs --tail 200
