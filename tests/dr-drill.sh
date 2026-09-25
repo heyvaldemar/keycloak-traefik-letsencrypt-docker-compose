@@ -312,6 +312,12 @@ after() {
     F="$dbf" S="$(printf '%s' "$dbf" | cycle_of)" bash -c "$DB_RESTORE"
   fi
   if [ -n "${DATA_DIR_ENV:-}" ]; then
+    # THE STACK SETTLES BETWEEN THE TWO RESTORES. Each restore script stops
+    # and starts the application; two stop-starts seconds apart left OTRS's
+    # Apache on a stale pid file, and the container stayed unhealthy for the
+    # rest of the run on two attempts out of six. An operator waits for the
+    # first restore to come up before starting the second, and so does this.
+    [ -z "${DB_DIR_ENV:-}" ] || wait_healthy "$DOCKER_COMPOSE_FILE" || { explain; exit 1; }
     dataf="$(newest "$DATA_DIR_ENV" "$DATA_FILE_MATCH")"
     say "restoring the data from $dataf"
     F="$dataf" S="$(printf '%s' "$dataf" | cycle_of)" bash -c "$DATA_RESTORE"
