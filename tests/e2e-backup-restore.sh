@@ -334,13 +334,18 @@ test_prune_removes_old() {
 
   # Prune runs once per backup cycle (INTERVAL=30s). Wait one full cycle
   # plus a generous buffer to account for dump + gzip time on a warm DB.
-  echo "  waiting 45s for next prune cycle..."
-  sleep 45
-
-  if backups_sh "ls $fake_old 2>/dev/null" > /dev/null 2>&1; then
-    fail "fake old file still present after prune cycle"
-    return 1
-  fi
+  # A cycle is the dump, the prune, then the interval. Wait for the prune
+  # itself, with a ceiling of two cycles; a fixed wait is the assumption
+  # that reverted a good refresh twice elsewhere on 2026-09-25.
+  local iv="${KEYCLOAK_BACKUP_INTERVAL:-30s}" secs
+  case "$iv" in *h) secs=$(( ${iv%h} * 3600 )) ;; *m) secs=$(( ${iv%m} * 60 )) ;; *s) secs="${iv%s}" ;; *) secs="$iv" ;; esac
+  local ceiling=$(( secs * 2 + 300 )) waited=0
+  echo "  waiting up to ${ceiling}s for a prune cycle to remove it..."
+  while backups_sh "ls $fake_old 2>/dev/null" > /dev/null 2>&1; do
+    if [ "$waited" -ge "$ceiling" ]; then fail "fake old file survived ${ceiling}s, longer than two backup cycles"; return 1; fi
+    sleep 5; waited=$(( waited + 5 ))
+  done
+  echo "  pruned after ${waited}s"
 
   # Sanity check: recent backups must still be there (prune must not
   # blanket-delete — see PR #21 prune-scope hardening).
