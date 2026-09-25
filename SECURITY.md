@@ -11,7 +11,7 @@ A formal release / maintenance-branch split will be introduced once this repo is
 
 ## Reporting a vulnerability
 
-Send reports to v@valdemar.ai. Encrypted email is preferred: the PGP public key is published at [heyvaldemar.com/security](https://heyvaldemar.com/security).
+Report privately through GitHub: **Security → Report a vulnerability** on this repository (private vulnerability reporting is enabled). Email to v@valdemar.ai also works. The process is described at [heyvaldemar.com/security](https://heyvaldemar.com/security/).
 
 You can expect an acknowledgment within 7 days. This project does not operate a bounty program; researchers who submit valid, responsibly disclosed reports receive public credit in the release notes and the changelog.
 
