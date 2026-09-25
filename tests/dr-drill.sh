@@ -69,7 +69,7 @@ bk() { docker exec "$(cid "$BACKUPS_SVC")" sh -c "$1"; }
 env_of() { docker exec "$(cid "$BACKUPS_SVC")" printenv "$1"; }
 bk_in() { docker exec "$(cid "$1")" sh -c "$2"; }                                # the same, in a named backups service
 env_in() { docker exec "$(cid "$1")" printenv "$2"; }
-cf() { local f; for f in $1; do printf ' -f %s' "$f"; done; }                    # -f for each compose file, in order
+cf() { CF=(); local f; for f in $1; do CF+=(-f "$f"); done; }                    # CF=(-f a -f b): the compose files, in order
 val() { case "$1" in =*) printf '%s' "${1#=}" ;; *) env_of "$1" ;; esac; }   # a variable, or "=literal"
 expand() { bk "printf '%s' \"$1\""; }                                          # $VAR in a pattern, as the container sees it
 say() { echo "[dr $(date -u +%H:%M:%S)] $*"; }
@@ -150,7 +150,8 @@ wait_app() {
 wait_healthy() {  # every container running and healthy, or a one-shot that exited 0
   local files="$1" bad=""
   for _ in $(seq 1 90); do
-    bad="$(docker compose $(cf "$files") -p "$PROJECT" ps -a --format json \
+    cf "$files"
+    bad="$(docker compose "${CF[@]}" -p "$PROJECT" ps -a --format json \
       | jq -rs --arg ignore " ${DR_IGNORE_SERVICES:-} " '[.[] | . as $c | select(($ignore | contains(" " + $c.Service + " ")) | not) | select((.State == "running" and (.Health == "" or .Health == "healthy")) or (.State == "exited" and .ExitCode == 0) | not)] | map("\(.Service):\(.State)/\(.Health)") | join(" ")')"
     [ -z "$bad" ] && return 0
     sleep 10
@@ -219,9 +220,15 @@ before() {
     i=$((i + 1)); git show "$DR_FROM:$f" > ".dr-from-$i.yml"; from_files="$from_files .dr-from-$i.yml"
   done
   say "starting $DR_FROM, the release this host was running"
-  docker compose $(cf "$from_files") -p "$PROJECT" up -d
+  cf "$from_files"; docker compose "${CF[@]}" -p "$PROJECT" up -d
   wait_healthy "$from_files"
-  wait_app "${DR_APP_WAIT:-600}"
+  # THE DYING HOST'S FRONT DOOR IS NOT THE MEASUREMENT. The markers go in
+  # through the backups container and come out on the clean machine; whether
+  # the previous release answered over HTTPS is noted, not required. Mailu's
+  # v1.7.7 answered on two starts in three (two Traefik routers, one rule),
+  # and a drill that gives up on the host that is about to die anyway would
+  # measure that old fault instead of the restore.
+  wait_app "${DR_APP_WAIT:-600}" || say "the previous release did not answer over HTTPS; the markers and the backup do not depend on it"
   mkdir -p "$OUT"
   say "writing the markers"
   [ -z "$DB_ENGINE" ] || mark_write
@@ -276,7 +283,7 @@ after() {
   # exactly so. A restored .env carries the documented 30-minute warm-up.
   sed -i -E 's/^([A-Z_]*BACKUP_INIT_SLEEP)=.*/\1=30m/' .env
   say "a clean machine: starting $to empty"
-  docker compose $(cf "$DOCKER_COMPOSE_FILE") -p "$PROJECT" up -d
+  cf "$DOCKER_COMPOSE_FILE"; docker compose "${CF[@]}" -p "$PROJECT" up -d
   wait_healthy "$DOCKER_COMPOSE_FILE"
   # The empty stack answers before anything is put back: a restore that runs
   # into an application still initialising is a different failure from a

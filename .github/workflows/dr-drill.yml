@@ -76,8 +76,9 @@ jobs:
         # gone, and the page says from and to plainly.
         run: |
           from=""
+          read -ra files <<< "$DOCKER_COMPOSE_FILE"
           for t in $(git tag --sort=-v:refname --list 'v*'); do
-            if ! git diff --quiet "$t" HEAD -- $DOCKER_COMPOSE_FILE; then from="$t"; break; fi
+            if ! git diff --quiet "$t" HEAD -- "${files[@]}"; then from="$t"; break; fi
           done
           [ -n "$from" ] || from="$(git tag --sort=-v:refname --list 'v*' | head -n 1)"
           [ -n "$from" ] || { echo "::error::no release to take the backup on"; exit 1; }
@@ -132,7 +133,9 @@ jobs:
 
       - name: Show container logs on failure
         if: failure()
-        run: docker compose $(for f in .dr-from-*.yml; do printf ' -f %s' "$f"; done) -p "$COMPOSE_PROJECT_NAME" logs --tail 200 || true
+        run: |
+          args=(); for f in .dr-from-*.yml; do args+=(-f "$f"); done
+          docker compose "${args[@]}" -p "$COMPOSE_PROJECT_NAME" logs --tail 200 || true
 
   after:
     name: A clean machine brings the current release back from those files
@@ -230,4 +233,7 @@ jobs:
 
       - name: Show container logs on failure
         if: failure()
-        run: docker compose $(for f in $DOCKER_COMPOSE_FILE; do printf ' -f %s' "$f"; done) -p "$COMPOSE_PROJECT_NAME" logs --tail 200
+        run: |
+          read -ra files <<< "$DOCKER_COMPOSE_FILE"
+          args=(); for f in "${files[@]}"; do args+=(-f "$f"); done
+          docker compose "${args[@]}" -p "$COMPOSE_PROJECT_NAME" logs --tail 200
