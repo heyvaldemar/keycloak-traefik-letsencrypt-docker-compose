@@ -75,6 +75,7 @@ expand() { bk "printf '%s' \"$1\""; }                                          #
 say() { echo "[dr $(date -u +%H:%M:%S)] $*"; }
 
 pass_expr() {  # how the password reaches the client, inside the backups container's shell
+  # shellcheck disable=SC2016  # the $(...) below is for the container's shell, not this one
   case "${DB_PASS_ENV:-}" in
     "") printf '' ;;
     /*) printf '$(cat %s)' "$DB_PASS_ENV" ;;
@@ -211,11 +212,12 @@ before() {
   sed -i -E 's/^([A-Z_]*BACKUP_INIT_SLEEP)=.*/\1=15s/; s/^([A-Z_]*BACKUP_INTERVAL)=.*/\1=60s/' .env
   # An .env that never names the interval leaves the compose default of a day;
   # every prefix the compose file gives the two variables is set here.
-  local p
-  for p in $(grep -oE '\$\{[A-Z_]*BACKUP_INIT_SLEEP' "$DOCKER_COMPOSE_FILE" | sed 's/^\${//; s/BACKUP_INIT_SLEEP$//' | sort -u); do
+  local p files
+  read -ra files <<< "$DOCKER_COMPOSE_FILE"
+  while read -r p; do
     grep -q "^${p}BACKUP_INIT_SLEEP=" .env || echo "${p}BACKUP_INIT_SLEEP=15s" >> .env
     grep -q "^${p}BACKUP_INTERVAL=" .env || echo "${p}BACKUP_INTERVAL=60s" >> .env
-  done
+  done < <(grep -ohE '\$\{[A-Z_]*BACKUP_INIT_SLEEP' "${files[@]}" | sed 's/^\${//; s/BACKUP_INIT_SLEEP$//' | sort -u)
   for f in $DOCKER_COMPOSE_FILE; do
     i=$((i + 1)); git show "$DR_FROM:$f" > ".dr-from-$i.yml"; from_files="$from_files .dr-from-$i.yml"
   done
@@ -267,8 +269,10 @@ after() {
   t0="$(date +%s)"
   # The release main carries: the newest tag whose stack is main's, or "main"
   # when the stack has moved on since the last release.
+  local files
+  read -ra files <<< "$DOCKER_COMPOSE_FILE"
   to="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-  if [ -z "$to" ] || ! git diff --quiet "$to" HEAD -- $DOCKER_COMPOSE_FILE; then to="main"; fi
+  if [ -z "$to" ] || ! git diff --quiet "$to" HEAD -- "${files[@]}"; then to="main"; fi
   MARK="$(cat "$OUT/marker")"
   cp "$OUT/env" .env
   local k
