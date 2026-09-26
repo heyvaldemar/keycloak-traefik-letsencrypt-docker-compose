@@ -189,6 +189,11 @@ services:
       - "--entrypoints.web.address=:80"
       # Define the secure (HTTPS) entry point on port 443
       - "--entrypoints.websecure.address=:443"
+      # Timeouts on the HTTPS entry point. Unset, they are Traefik's own
+      # defaults; set them in .env to tune (see .env.example).
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=${TRAEFIK_READ_TIMEOUT:-60s}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=${TRAEFIK_WRITE_TIMEOUT:-0s}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=${TRAEFIK_IDLE_TIMEOUT:-180s}"
       # HTTP -> HTTPS redirect at entrypoint level
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"

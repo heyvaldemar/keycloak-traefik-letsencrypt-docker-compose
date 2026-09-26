@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Added
+
+- **Traefik's timeouts on the HTTPS entry point can be set from `.env`.**
+  `TRAEFIK_READ_TIMEOUT`, `TRAEFIK_WRITE_TIMEOUT` and `TRAEFIK_IDLE_TIMEOUT`
+  default to Traefik's own values (60s, 0s, 180s), so nothing changes unless
+  you set them. Traefik reads its static configuration from one source, here
+  the command in the compose file, and an override file can only replace that
+  command whole; a variable is the way to tune it and keep taking updates.
+  Asked for in [#45](https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/issues/45).
 
 ## [1.7.8] - 2026-09-25
 
