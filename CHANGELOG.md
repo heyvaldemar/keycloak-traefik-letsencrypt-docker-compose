@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.8.1] - 2026-10-01
+
 ### Changed
 
 - **`quay.io/keycloak/keycloak:26.7.4` moved to `quay.io/keycloak/keycloak:26.8.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
@@ -454,7 +458,8 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 
 [1.3.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.3.0
 [1.4.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.4.0
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.7.8...v1.8.0
 [1.7.6]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.7.5...v1.7.6
 [1.7.5]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.7.4...v1.7.5
