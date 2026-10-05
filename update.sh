@@ -37,6 +37,15 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
+# docker compose reads .env last, after the checkout. A .env this user
+# cannot read (a copy restored without -p comes back root:root 0600) would
+# stop it there, with the tree already on the new tag, and would make every
+# required variable below read as "not set". Name the file and stop first.
+if [ -e .env ] && [ ! -r .env ]; then
+  echo ".env is not readable by $(id -un) ($(stat -c '%A %U:%G' .env 2>/dev/null || stat -f '%Sp %Su:%Sg' .env)) — fix its ownership, nothing updated" >&2
+  exit 1
+fi
+
 git fetch --tags --quiet origin
 
 latest="$(git tag -l 'v*' --sort=-v:refname | head -1)"
