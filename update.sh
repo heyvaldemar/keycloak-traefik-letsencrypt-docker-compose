@@ -81,7 +81,7 @@ if [ -n "$_new" ]; then
   while IFS= read -r _k; do echo "  $_k"; done <<<"$_new"
   _required=""
   for _f in "${_files[@]}"; do
-    _required="$_required $(git show "$latest:$_f" 2>/dev/null | grep -oE '\$\{[A-Z0-9_]+:\?' | sed -E 's/^\$\{//; s/:\?$//' | tr '\n' ' ')"
+    _required="$_required $(git show "$latest:$_f" 2>/dev/null | grep -oE '\$\{[A-Z0-9_]+:\?' | sed -E 's/^\$\{//; s/:\?$//' | tr '\n' ' ' || true)"
   done
   _missing=""
   for _k in $_new; do
