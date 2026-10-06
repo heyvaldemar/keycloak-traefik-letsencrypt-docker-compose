@@ -300,7 +300,7 @@ See [`SECURITY.md`](SECURITY.md) for the vulnerability disclosure process.
 
 ## Container hardening
 
-This stack ships with production-grade container hardening (per [`self-host-repo-hardening-runbook` → Phase 7](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/RUNBOOK.md#phase-7--container-security-context--resource-limits)) applied to every service:
+This stack ships with container hardening (per [`self-host-repo-hardening-runbook` → Phase 7](https://github.com/heyvaldemar/self-host-repo-hardening-runbook/blob/main/RUNBOOK.md#phase-7--container-security-context--resource-limits)) applied to every service:
 
 - **`security_opt: no-new-privileges:true`**: prevents privilege escalation via setuid binaries even if a process inside escapes its initial capability set.
 - **`cap_drop: [ALL]`**: drops every Linux capability. Each service adds back only what it needs:
