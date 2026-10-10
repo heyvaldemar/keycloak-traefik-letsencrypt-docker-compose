@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Security
+
+- **`quay.io/keycloak/keycloak:26.8.0` was rebuilt upstream**; the pin moved from `sha256:b0f60d489d51…` to `sha256:27b3230fbabb…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
 
 ## [1.8.5] - 2026-10-09
 
