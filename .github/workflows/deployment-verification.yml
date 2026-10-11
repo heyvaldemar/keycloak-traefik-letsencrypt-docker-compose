@@ -230,6 +230,29 @@ jobs:
       - name: Start up services using Docker Compose
         run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d
 
+      - name: Every volume an image declares is one this stack names
+        # A VOLUME the image declares and no mount covers becomes an anonymous
+        # volume: it holds data, the backups never see it, and a down/up gives
+        # the container an empty one. GLPI's data lived in one for six weeks in
+        # 2026, under a named volume mounted where the image never reads.
+        # Anonymous volumes this stack keeps on purpose are listed, with the
+        # reason, in .github/anonymous-volumes as "service /path reason".
+        run: |
+          allowed="$(grep -vE '^[[:space:]]*(#|$)' .github/anonymous-volumes 2>/dev/null | awk '{print $1" "$2}' || true)"
+          bad=""
+          for c in $(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME"); do
+            svc="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$c")"
+            for m in $(docker inspect -f '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}={{.Destination}} {{end}}{{end}}' "$c"); do
+              [[ "${m%%=*}" =~ ^[0-9a-f]{64}$ ]] || continue
+              grep -qxF "$svc ${m#*=}" <<<"$allowed" || bad="$bad $svc:${m#*=}"
+            done
+          done
+          if [ -n "$bad" ]; then
+            echo "::error::anonymous volumes no named volume covers:$bad. Mount a named volume there, or list it in .github/anonymous-volumes with the reason."
+            exit 1
+          fi
+          echo "every volume the images declare is named, or listed as anonymous on purpose"
+
       - name: Modify /etc/hosts for internal routing
         run: |
           echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
@@ -325,6 +348,29 @@ jobs:
 
       - name: Start up services using Docker Compose
         run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d
+
+      - name: Every volume an image declares is one this stack names
+        # A VOLUME the image declares and no mount covers becomes an anonymous
+        # volume: it holds data, the backups never see it, and a down/up gives
+        # the container an empty one. GLPI's data lived in one for six weeks in
+        # 2026, under a named volume mounted where the image never reads.
+        # Anonymous volumes this stack keeps on purpose are listed, with the
+        # reason, in .github/anonymous-volumes as "service /path reason".
+        run: |
+          allowed="$(grep -vE '^[[:space:]]*(#|$)' .github/anonymous-volumes 2>/dev/null | awk '{print $1" "$2}' || true)"
+          bad=""
+          for c in $(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME"); do
+            svc="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$c")"
+            for m in $(docker inspect -f '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}={{.Destination}} {{end}}{{end}}' "$c"); do
+              [[ "${m%%=*}" =~ ^[0-9a-f]{64}$ ]] || continue
+              grep -qxF "$svc ${m#*=}" <<<"$allowed" || bad="$bad $svc:${m#*=}"
+            done
+          done
+          if [ -n "$bad" ]; then
+            echo "::error::anonymous volumes no named volume covers:$bad. Mount a named volume there, or list it in .github/anonymous-volumes with the reason."
+            exit 1
+          fi
+          echo "every volume the images declare is named, or listed as anonymous on purpose"
 
       - name: Wait for postgres to become healthy
         # docker compose --wait would be nicer but isn't universally
