@@ -8,7 +8,7 @@
 # from these three lines — this block is the single source of truth.
 x-images:
   traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:1336e85aaed293bd63d005086e0dd013b04078b26aaeb1c18b26a2f928af7e65}}
-  postgres: &postgres-image ${KEYCLOAK_POSTGRES_IMAGE_TAG:-postgres:${KEYCLOAK_POSTGRES_IMAGE_VERSION:-16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97}}
+  postgres: &postgres-image ${KEYCLOAK_POSTGRES_IMAGE_TAG:-postgres:${KEYCLOAK_POSTGRES_IMAGE_VERSION:-16@sha256:1beaa3084eee2676f20a9cd9928f0bf2c5bf674f8e49f81017912183d377c61c}}
   keycloak: &keycloak-image ${KEYCLOAK_IMAGE_TAG:-quay.io/keycloak/keycloak:${KEYCLOAK_IMAGE_VERSION:-26.8.1@sha256:a78d6b79572168cb25886b80a8b5b8d4ed4390743e3eecb810538683e209dd6b}}
 
 networks:
