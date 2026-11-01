@@ -29,6 +29,10 @@ name: Release Assets
 # by hand with a tag, it signs an existing release, which is how the releases
 # before this job existed were given the same three files; those runs ran on
 # main, so their provenance names the branch, and --source-tag refuses it.
+#
+# The last job runs both commands itself, on the files the release now
+# holds, and shows each a copy of the archive with one byte appended,
+# which both must refuse.
 on:
   release:
     types: [published]
@@ -118,9 +122,12 @@ jobs:
       actions: read
       id-token: write
       contents: write
-    # The SLSA generator must be referenced by tag, not SHA: it verifies its
-    # own reference at run time and refuses a SHA. OpenSSF Scorecard knows
-    # this workflow and does not count it as an unpinned dependency.
+    # Referenced by tag, and this is the one line in the fleet that is. The
+    # generator halts when referenced by commit (tested on 2026-09-24: it
+    # then reports the repository as private and stops, to keep a name out of
+    # the transparency log), and OpenSSF Scorecard scores this line as an
+    # unpinned dependency, 8 of 10, on every repository that carries it. The
+    # evidence page says so beside the score.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: ${{ needs.archive.outputs.subjects }}
@@ -155,3 +162,62 @@ jobs:
         run: |
           ls -l out
           gh release upload "$TAG" "out/$NAME" --clobber
+
+  verify:
+    name: Verify the release as a stranger would
+    needs: [archive, attach]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    # The two commands the header gives anyone, run on what the release now
+    # holds, downloaded from it rather than handed over by the jobs above:
+    # until 27 October 2026 nothing in CI checked the provenance, so a
+    # release whose provenance did not verify would have looked like any
+    # other. Each check is also shown a violation, the same archive with one
+    # byte appended, which both must refuse; a check never seen to fail
+    # proves nothing.
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install slsa-verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6 # v2.7.1
+
+      - name: Download the three files from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.archive.outputs.tag }}
+        run: |
+          NAME="${GITHUB_REPOSITORY#*/}-$TAG"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D out \
+            -p "$NAME.tar.gz" -p "$NAME.tar.gz.sigstore.json" -p "$NAME.intoto.jsonl"
+          ls -l out
+
+      - name: Verify the signature and the provenance, and that a changed archive fails both
+        env:
+          TAG: ${{ needs.archive.outputs.tag }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          NAME="${GITHUB_REPOSITORY#*/}-$TAG"
+          cd out
+          sig=(--certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/"
+               --certificate-oidc-issuer https://token.actions.githubusercontent.com)
+          # A release run ran on the tag, so its provenance names the tag; a
+          # run started by hand ran on a branch, and names that instead.
+          if [ "$EVENT" = release ]; then src=(--source-tag "$TAG"); else src=(--source-branch "$GITHUB_REF_NAME"); fi
+
+          cosign verify-blob "$NAME.tar.gz" --bundle "$NAME.tar.gz.sigstore.json" "${sig[@]}"
+          slsa-verifier verify-artifact "$NAME.tar.gz" --provenance-path "$NAME.intoto.jsonl" \
+            --source-uri "github.com/$GITHUB_REPOSITORY" "${src[@]}"
+
+          cp "$NAME.tar.gz" changed.tar.gz
+          printf 'x' >> changed.tar.gz
+          if cosign verify-blob changed.tar.gz --bundle "$NAME.tar.gz.sigstore.json" "${sig[@]}"; then
+            echo "::error::cosign accepted the archive with one byte appended"; exit 1
+          fi
+          if slsa-verifier verify-artifact changed.tar.gz --provenance-path "$NAME.intoto.jsonl" \
+               --source-uri "github.com/$GITHUB_REPOSITORY" "${src[@]}"; then
+            echo "::error::slsa-verifier accepted the archive with one byte appended"; exit 1
+          fi
+          echo "the release verifies, and a changed copy of its archive does not"
