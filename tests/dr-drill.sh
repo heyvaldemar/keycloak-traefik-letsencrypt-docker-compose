@@ -74,6 +74,8 @@ val() { case "$1" in =*) printf '%s' "${1#=}" ;; *) env_of "$1" ;; esac; }   # a
 expand() { bk "printf '%s' \"$1\""; }                                          # $VAR in a pattern, as the container sees it
 say() { echo "[dr $(date -u +%H:%M:%S)] $*"; }
 
+# Always as an environment variable (PGPASSWORD, MYSQL_PWD, SQLCMDPASSWORD), never
+# as an argument: ps shows every process's arguments to every user on the host.
 pass_expr() {  # how the password reaches the client, inside the backups container's shell
   # shellcheck disable=SC2016  # the $(...) below is for the container's shell, not this one
   case "${DB_PASS_ENV:-}" in
@@ -90,7 +92,7 @@ sql() {  # one statement against the application's database, from the backups co
     postgres) bk "${DB_PASS_ENV:+PGPASSWORD=$(pass_expr) }psql -q -h '$DB_HOST' -U '$user' -d '$db' -tAc \"$q\"" ;;
     mariadb|mysql) bk "MYSQL_PWD=$(pass_expr) $DB_ENGINE -h '$DB_HOST' -u '$user' -N -s -e \"$q\" '$db'" ;;
     mongo) bk "mongosh --quiet --host '$DB_HOST' '$db' --eval \"$q\"" ;;
-    mssql) bk "/opt/mssql-tools18/bin/sqlcmd -S '$DB_HOST' -U sa -P $(pass_expr) -C -b -h -1 -W -d '$db' -Q \"SET NOCOUNT ON; $q\"" ;;
+    mssql) bk "SQLCMDPASSWORD=$(pass_expr) /opt/mssql-tools18/bin/sqlcmd -S '$DB_HOST' -U sa -C -b -h -1 -W -d '$db' -Q \"SET NOCOUNT ON; $q\"" ;;
     *) echo "unknown DB_ENGINE $DB_ENGINE" >&2; return 2 ;;
   esac
 }
@@ -99,7 +101,7 @@ mark_write() {
   case "$DB_ENGINE" in
     mongo) sql "db.dr_marker.deleteMany({}); db.dr_marker.insertOne({v: '$MARK'});" > /dev/null ;;
     mssql) # the drill's own database, made from master: a connection to a database that is not there yet cannot create it
-           bk "/opt/mssql-tools18/bin/sqlcmd -S '$DB_HOST' -U sa -P $(pass_expr) -C -b -d master -Q \"IF DB_ID(N'$(val "$DB_NAME_ENV")') IS NULL CREATE DATABASE [$(val "$DB_NAME_ENV")];\"" > /dev/null
+           bk "SQLCMDPASSWORD=$(pass_expr) /opt/mssql-tools18/bin/sqlcmd -S '$DB_HOST' -U sa -C -b -d master -Q \"IF DB_ID(N'$(val "$DB_NAME_ENV")') IS NULL CREATE DATABASE [$(val "$DB_NAME_ENV")];\"" > /dev/null
            sql "IF OBJECT_ID('dr_marker') IS NULL CREATE TABLE dr_marker (v varchar(80)); DELETE FROM dr_marker; INSERT INTO dr_marker VALUES ('$MARK');" > /dev/null ;;
     *) sql "CREATE TABLE IF NOT EXISTS dr_marker (v varchar(80)); DELETE FROM dr_marker; INSERT INTO dr_marker VALUES ('$MARK');" > /dev/null ;;
   esac
