@@ -55,6 +55,32 @@ jobs:
 
       - name: Compare pinned digests against what each tag resolves to now
         run: |
+          # A NEW INDEX OVER THE SAME BUILD IS NOT DRIFT. A multi-platform tag
+          # names an index, and an index can be pushed again over the very same
+          # images: a platform added or dropped, an attestation rewritten. What
+          # runs here, and what CI proves, is the linux/amd64 build, so a moved
+          # digest is drift only when the linux/amd64 build under it moved too.
+          # The fleet's triage reads it the same way and moves no pin for a
+          # re-pushed index, so failing here would keep this check red for an
+          # image nobody rebuilt. A build that cannot be read is still drift.
+          amd64_build() { # amd64_build <name:tag@digest> -> its linux/amd64 build; nothing if unreadable
+            local raw
+            raw="$(docker buildx imagetools inspect --raw "$1" 2>/dev/null)" || return 0
+            if jq -e '(.manifests? | type) == "array"' <<<"$raw" >/dev/null 2>&1; then
+              jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64" and ((.platform.variant // "") == ""))][0].digest // empty' <<<"$raw" 2>/dev/null || true
+            elif jq -e '.config? != null' <<<"$raw" >/dev/null 2>&1; then
+              printf '%s\n' "${1##*@}"
+            fi
+          }
+          new_build() { # new_build <name:tag> <pinned digest> <current digest> -> 0 unless both carry one linux/amd64 build
+            local was now
+            was="$(amd64_build "$1@$2")"; now="$(amd64_build "$1@$3")"
+            if [ -n "$was" ] && [ "$was" = "$now" ]; then
+              echo "::notice::$1 index moved from $2 to $3 over the same linux/amd64 build $was: the image did not change and the pin stays"
+              return 1
+            fi
+            return 0
+          }
           status=0
           for var in TRAEFIK_IMAGE_TAG KEYCLOAK_POSTGRES_IMAGE_TAG KEYCLOAK_IMAGE_TAG; do
             pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" keycloak-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
@@ -73,7 +99,7 @@ jobs:
               status=1
               continue
             fi
-            if [ "$pinned_digest" != "$current_digest" ]; then
+            if [ "$pinned_digest" != "$current_digest" ] && new_build "$ref" "$pinned_digest" "$current_digest"; then
               echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
               status=1
             else
