@@ -39,23 +39,65 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
+          # The pull requests the run was for, its branch and who started it.
+          # Through the environment, never pasted into the script: a branch name
+          # is text whoever opens a pull request chooses.
+          PRS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
           VERIFY: ${{ github.event.workflow_run.path }}
         run: |
-          # The pull request is found from the commit rather than passed in:
-          # workflow_run carries the run, not the pull request that caused it.
-          pr="$(gh api "repos/$REPO/commits/$SHA/pulls" \
-                 --jq '.[] | select(.state=="open") | select(.user.login=="dependabot[bot]") | .number' \
-                 | head -1)"
+          # THE PULL REQUEST COMES FROM THE EVENT, AND THE COMMIT IS ONLY THE
+          # FALLBACK. This used to ask which pull request carries the commit, and
+          # on 2026-11-11 GitHub answered nothing five minutes after
+          # siyuan-docker-compose#8 opened: the job said "nothing to do", went
+          # green, and the update waited sixty hours. The event lists the pull
+          # requests the run was for; the commit is asked about only when that
+          # list is empty, six times, twenty seconds apart.
+          pr="$(jq -r '.[0].number // empty' <<<"$PRS" 2>/dev/null || true)"
+          tries=0
+          while [ -z "$pr" ] && [ "$tries" -lt 6 ]; do
+            if [ "$tries" -gt 0 ]; then sleep 20; fi
+            tries=$((tries + 1))
+            pr="$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // empty' 2>/dev/null || true)"
+          done
           if [ -z "$pr" ]; then
-            echo "no open Dependabot pull request at $SHA — nothing to do"
+            # A run Dependabot started with no pull request to be found is a
+            # failure, not "nothing to do": the update would wait where nobody looks.
+            if [ "$ACTOR" = "dependabot[bot]" ] && [ "${HEAD_BRANCH#dependabot/}" != "$HEAD_BRANCH" ]; then
+              echo "::error::verification passed at $SHA on $HEAD_BRANCH, and no pull request was found for it, in the event or in six lookups"
+              exit 1
+            fi
+            echo "no pull request at $SHA: nothing to do"
+            exit 0
+          fi
+          # WHAT MAY BE MERGED IS DECIDED BY THE PULL REQUEST, NOT BY THE EVENT.
+          # Its author must be Dependabot and its head the commit that was
+          # verified. A head that moved since is a commit nothing here has run:
+          # the run on that head decides instead.
+          info="$(gh api "repos/$REPO/pulls/$pr" --jq '"\(.state) \(.user.login) \(.head.sha)"')" \
+            || { echo "::error::#$pr could not be read"; exit 1; }
+          read -r state author head <<<"$info"
+          if [ "$author" != "dependabot[bot]" ]; then
+            echo "#$pr is $author's, not Dependabot's: not merging"
+            exit 0
+          fi
+          if [ "$state" != open ]; then
+            echo "#$pr is $state: nothing to merge"
+            exit 0
+          fi
+          if [ "$head" != "$SHA" ]; then
+            echo "::warning::#$pr is at $head now, and the run that passed was for $SHA: not merging"
             exit 0
           fi
           echo "verification passed for #$pr; merging"
           # Squash where the repository allows it, a plain merge where it does
           # not. A repository with squash disabled would otherwise fail here
           # every week, and a job that fails every week is one nobody reads.
-          gh pr merge "$pr" --repo "$REPO" --squash --delete-branch \
-            || gh pr merge "$pr" --repo "$REPO" --merge --delete-branch
+          # --match-head-commit: GitHub refuses the merge if the head moved after
+          # the check above, so what lands is the commit that was verified.
+          gh pr merge "$pr" --repo "$REPO" --squash --delete-branch --match-head-commit "$SHA" \
+            || gh pr merge "$pr" --repo "$REPO" --merge --delete-branch --match-head-commit "$SHA"
           # THE MERGE IS PUSHED WITH GITHUB_TOKEN, AND GITHUB RUNS NO WORKFLOWS
           # FOR PUSHES MADE WITH IT. So main would land with no checks on its
           # head: the pull request was verified, the merge result was not, and
