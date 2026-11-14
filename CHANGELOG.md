@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.8.25] - 2026-11-14
+
 ### Security
 
 - **`traefik:3.7` was rebuilt upstream**; the pin moved from `sha256:c1ea95f3b3ea…` to `sha256:b7b1b31e6440…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
@@ -619,7 +623,8 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 
 [1.3.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.3.0
 [1.4.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.4.0
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.24...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.25...HEAD
+[1.8.25]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.24...v1.8.25
 [1.8.24]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.23...v1.8.24
 [1.8.23]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.22...v1.8.23
 [1.8.22]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.21...v1.8.22
