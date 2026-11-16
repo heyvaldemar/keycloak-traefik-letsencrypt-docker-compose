@@ -25,7 +25,7 @@ name: Release Assets
 #     --source-uri github.com/heyvaldemar/<repo> --source-tag <tag>
 #
 # THE IDENTITY IS EXACT. It names this file and the ref the signing run ran
-# on, and nothing looser. Until 17 November 2026 it was a prefix,
+# on, and nothing looser. Until 16 November 2026 it was a prefix,
 # '^https://github.com/heyvaldemar/<repo>/', and any workflow in the
 # repository matched it: a signature made by some other workflow, on any
 # branch, verified as a release. A release run runs on the tag, so the
@@ -75,14 +75,30 @@ jobs:
         id: meta
         env:
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Provenance names the ref this run ran on. A run started by hand
-          # from a feature branch would attach to the release a statement that
-          # it was built from that branch, signed by that branch's copy of
-          # this file. So it runs from main or not at all.
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" != refs/heads/main ]; then
-            echo "::error::started from $GITHUB_REF: a release is signed only from refs/heads/main, start it from main"
-            exit 1
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # Provenance names the ref this run ran on. A run started by hand
+            # from a feature branch would attach to the release a statement
+            # that it was built from that branch, signed by that branch's copy
+            # of this file. So it runs from main or not at all.
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "::error::started from $GITHUB_REF: a release is signed only from refs/heads/main, start it from main"
+              exit 1
+            fi
+            # A run by hand is for a release with no files yet. One that has
+            # them was signed on its tag, and the upload below replaces files
+            # of the same name: the signature would then name main, and
+            # everyone who checks the tag's identity, as the README says,
+            # would be refused. To replace them, delete the three files first.
+            if ! names="$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"; then
+              echo "::error::release $TAG could not be read, so it cannot be told whether it is already signed"
+              exit 1
+            fi
+            if printf '%s\n' "$names" | grep -qxF "${GITHUB_REPOSITORY#*/}-$TAG.tar.gz.sigstore.json"; then
+              echo "::error::$TAG already carries its signature; a run by hand would replace it with one made on main. Delete the three files first if they are to be replaced"
+              exit 1
+            fi
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=${GITHUB_REPOSITORY#*/}-$TAG" >> "$GITHUB_OUTPUT"
@@ -231,7 +247,7 @@ jobs:
           # refuses <tool> <its words for a changed artifact> <command...>
           # The changed archive must be refused, and refused because it
           # changed. A tool that cannot reach Sigstore, or is not installed,
-          # also exits non-zero, and until 17 November 2026 this step read
+          # also exits non-zero, and until 16 November 2026 this step read
           # that as a refusal and went green with nothing checked. The words
           # are those of cosign v3.1 and slsa-verifier v2.7: a tool update
           # that rewords them turns this red, which is the safe way to find out.
