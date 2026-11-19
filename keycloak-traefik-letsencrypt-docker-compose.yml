@@ -8,8 +8,8 @@
 # from these three lines — this block is the single source of truth.
 x-images:
   traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:b7b1b31e6440de0b1f7c4e0f6cf0a0f3f004866761d30c025fe00c80daaf7d9c}}
-  postgres: &postgres-image ${KEYCLOAK_POSTGRES_IMAGE_TAG:-postgres:${KEYCLOAK_POSTGRES_IMAGE_VERSION:-16@sha256:63e83b5a3dc36a917dccb76fe1bd2ac51f1ec9c1deb47ff20d4f04233bf6eae9}}
-  keycloak: &keycloak-image ${KEYCLOAK_IMAGE_TAG:-quay.io/keycloak/keycloak:${KEYCLOAK_IMAGE_VERSION:-26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0}}
+  postgres: &postgres-image ${KEYCLOAK_POSTGRES_IMAGE_TAG:-postgres:${KEYCLOAK_POSTGRES_IMAGE_VERSION:-16@sha256:3950ad7c3148ca2175ef1b6c36c9efbf78957ae8fbe8b3a5d7c35af50500382f}}
+  keycloak: &keycloak-image ${KEYCLOAK_IMAGE_TAG:-quay.io/keycloak/keycloak:${KEYCLOAK_IMAGE_VERSION:-26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3}}
 
 networks:
   keycloak-network:
