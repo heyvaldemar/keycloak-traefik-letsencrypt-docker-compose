@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.9.0] - 2026-11-22
+
+### Added
+
+- **Optional admin isolation, as Keycloak's reverse-proxy guide recommends:**
+  `KEYCLOAK_ADMIN_HOSTNAME`, `KEYCLOAK_PUBLIC_REALMS` and
+  `KEYCLOAK_ADMIN_ALLOWED_IPS`. The first gives the Admin Console, the Admin
+  REST API and the `master` realm a hostname of their own (Keycloak's
+  `hostname-admin`), the second names the realms the public hostname serves,
+  with `/resources/` and RFC 8414 discovery, and the third allows only the
+  listed source addresses on everything else. Left unset, every path reaches
+  Keycloak on `KEYCLOAK_HOSTNAME` from every source, through the same `keycloak`
+  router as before: the new `keycloak-public` router ranks below it until a
+  public realm or an allowlist is set, so a middleware an override attaches to
+  `keycloak` still covers every path.
+- **A separate admin hostname needs the `master` realm's frontend URL set to
+  it.** Keycloak builds the `master` sign-in form from `KEYCLOAK_HOSTNAME`, so
+  without it the Admin Console's sign-in on the admin hostname posts to the
+  public one and fails ("Restart login cookie not found", or 404 once `master`
+  is not public). Measured on 26.8.2; the README gives the two `kcadm.sh`
+  commands and how to go back.
+- **`tests/routing.sh`, run by CI in three setups.** With nothing set, in the
+  deploy job: the Admin Console, discovery and the console's own sign-in on the
+  one hostname. With a separate admin hostname, realm `company` public and an
+  allowlist, then on one hostname with the allowlist, in the new
+  `split-routing` job: what the public side serves and refuses (`master`, other
+  realms, `company-test`, `/admin/`), 403 from outside the allowlist, and the
+  Admin Console sign-in from inside it, proven to fail until the frontend URL
+  is set.
+
+### Fixed
+
+- **The README's success check asked the public URL for `/health/ready` and
+  expected 200.** Keycloak serves health on its management port 9000, which
+  Traefik never reaches, so the public URL answers 404. It now asks for `master`
+  discovery.
+
 ## [1.8.26] - 2026-11-20
 
 ### Security

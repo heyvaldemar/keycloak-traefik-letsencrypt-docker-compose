@@ -92,7 +92,11 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?set in .env - see .env.example}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set in .env - see .env.example for generation command}
       KC_HEALTH_ENABLED: 'true'
-      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:?set in .env - see .env.example}
+      # With KEYCLOAK_ADMIN_HOSTNAME unset both lines are what they always were:
+      # the plain hostname, and no admin hostname. Set, Keycloak requires the
+      # hostname as a full URL (Hostname v2 validation), so https:// is added.
+      KC_HOSTNAME: "${KEYCLOAK_ADMIN_HOSTNAME:+https://}${KEYCLOAK_HOSTNAME:?set in .env - see .env.example}"
+      KC_HOSTNAME_ADMIN: "${KEYCLOAK_ADMIN_HOSTNAME:+https://}${KEYCLOAK_ADMIN_HOSTNAME:-}"
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: 'xforwarded'
       PROXY_ADDRESS_FORWARDING: 'true'
@@ -113,8 +117,22 @@ services:
     labels:
       # Enable Traefik for this container
       - "traefik.enable=true"
-      # Match incoming requests on a specific hostname
-      - "traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_HOSTNAME}`)"
+      # Two routers to the same Keycloak. `keycloak` serves everything on the
+      # admin hostname (KEYCLOAK_HOSTNAME unless KEYCLOAK_ADMIN_HOSTNAME is
+      # set), behind the source-IP allowlist. `keycloak-public` serves only
+      # what applications need on KEYCLOAK_HOSTNAME, Keycloak's reverse-proxy
+      # list: /resources/, and /realms/<realm> plus RFC 8414 discovery under
+      # /.well-known/ for the realms KEYCLOAK_PUBLIC_REALMS names (all of them
+      # when unset).
+      - "traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_ADMIN_HOSTNAME:-${KEYCLOAK_HOSTNAME}}`)"
+      # On one hostname `keycloak-public` outranks `keycloak` only once
+      # KEYCLOAK_PUBLIC_REALMS or KEYCLOAK_ADMIN_ALLOWED_IPS is set. With
+      # neither it ranks below and answers nothing: `keycloak` serves every
+      # path as it did before these settings existed, and a middleware an
+      # override attaches to it still covers all of them. Compose has no "if",
+      # so the number is built: 1 with neither set, 31 or 331 with either.
+      - "traefik.http.routers.keycloak.priority=2"
+      - "traefik.http.routers.keycloak-public.priority=${KEYCLOAK_PUBLIC_REALMS:+3}${KEYCLOAK_ADMIN_ALLOWED_IPS:+3}1"
       # Assign the router to a named Traefik service
       - "traefik.http.routers.keycloak.service=keycloak"
       # Use the 'websecure' (HTTPS) entry point
@@ -127,8 +145,20 @@ services:
       - "traefik.http.routers.keycloak.tls.certresolver=letsencrypt"
       # Pass the original Host header to the container
       - "traefik.http.services.keycloak.loadbalancer.passhostheader=true"
-      # Apply a compression middleware
-      - "traefik.http.routers.keycloak.middlewares=compresstraefik"
+      # The admin allowlist, then compression. Unset, it allows every IPv4
+      # and IPv6 source. Traefik checks the address the connection comes
+      # from: behind a CDN or another proxy that is the proxy's address.
+      - "traefik.http.routers.keycloak.middlewares=keycloak-admin-allowlist,compresstraefik"
+      - "traefik.http.middlewares.keycloak-admin-allowlist.ipallowlist.sourcerange=${KEYCLOAK_ADMIN_ALLOWED_IPS:-0.0.0.0/0,::/0}"
+      # The public router. $$ is a literal $ for Traefik: a realm name ends at
+      # a slash or at the end of the path, so `company` never matches
+      # `company-test`.
+      - "traefik.http.routers.keycloak-public.rule=Host(`${KEYCLOAK_HOSTNAME}`) && (PathPrefix(`/resources/`) || PathRegexp(`^/([.]well-known/[^/]+/)?realms/(${KEYCLOAK_PUBLIC_REALMS:-[^/]+})(/|$$)`))"
+      - "traefik.http.routers.keycloak-public.service=keycloak"
+      - "traefik.http.routers.keycloak-public.entrypoints=websecure"
+      - "traefik.http.routers.keycloak-public.tls=true"
+      - "traefik.http.routers.keycloak-public.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.keycloak-public.middlewares=compresstraefik"
       # Define settings for the compression middleware
       - "traefik.http.middlewares.compresstraefik.compress=true"
       # Specify which Docker network Traefik should use for routing
