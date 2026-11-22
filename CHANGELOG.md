@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.9.1] - 2026-11-22
+
 ### Fixed
 
 - **`KEYCLOAK_ADMIN_HOSTNAME`, `KEYCLOAK_PUBLIC_REALMS` and `KEYCLOAK_ADMIN_ALLOWED_IPS` are declared in `.env.example`, empty.** v1.9.0 listed them only as commented examples, and fleet conformance reads a `${VAR:+...}` with no default as a variable the file you copy must declare. Empty already meant what these variables meant before they existed, so nothing changes for a deployment: the compose file renders the same with and without the three lines. The comment above each one says what empty means and gives an example value.
@@ -669,7 +673,9 @@ Earlier commits did not follow Keep-a-Changelog. Highlights:
 
 [1.3.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.3.0
 [1.4.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.4.0
-[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.26...HEAD
+[Unreleased]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.9.0...v1.9.1
+[1.9.0]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.26...v1.9.0
 [1.8.26]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.25...v1.8.26
 [1.8.25]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.24...v1.8.25
 [1.8.24]: https://github.com/heyvaldemar/keycloak-traefik-letsencrypt-docker-compose/compare/v1.8.23...v1.8.24
