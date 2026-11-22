@@ -282,6 +282,12 @@ jobs:
             sleep 10
           done'
 
+      - name: Routing with nothing set - one hostname, every path, every source
+        # The admin-hostname settings are unset here, as on every deployment
+        # that predates them: the Admin Console, discovery and its own sign-in
+        # must all still work on KEYCLOAK_HOSTNAME.
+        run: ./tests/routing.sh
+
       - name: Inspect Network Configuration
         run: |
           docker network inspect "$NETWORK_ONE"
@@ -393,6 +399,76 @@ jobs:
 
       - name: Run backup/restore E2E tests
         run: ./tests/e2e-backup-restore.sh
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs
+
+      - name: Shutdown Docker Compose services
+        if: always()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" down
+
+  split-routing:
+    # KEYCLOAK_ADMIN_HOSTNAME, KEYCLOAK_PUBLIC_REALMS and
+    # KEYCLOAK_ADMIN_ALLOWED_IPS, which issue #54 asked for. A fixed subnet
+    # gives the test two known client addresses: .200 is in the allowlist,
+    # .201 is not.
+    name: docker compose up + admin hostname, public realms, admin allowlist
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    env:
+      DOCKER_COMPOSE_FILE: keycloak-traefik-letsencrypt-docker-compose.yml
+      COMPOSE_PROJECT_NAME: keycloak
+      TEST_ALLOWED_IP: 172.30.0.200
+      TEST_DENIED_IP: 172.30.0.201
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create the Docker networks, traefik-network on a fixed subnet
+        run: |
+          docker network create --subnet 172.30.0.0/24 traefik-network
+          docker network create keycloak-network
+
+      - name: Generate test .env with a separate admin hostname
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_LOG_LEVEL=WARN
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=traefik.keycloak.heyvaldemar.net
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_DB_NAME=keycloakdb
+          KEYCLOAK_DB_USER=keycloakdbuser
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_USERNAME=keycloakadmin
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=keycloak.heyvaldemar.net
+          KEYCLOAK_ADMIN_HOSTNAME=admin.keycloak.heyvaldemar.net
+          KEYCLOAK_PUBLIC_REALMS=company
+          KEYCLOAK_ADMIN_ALLOWED_IPS=${TEST_ALLOWED_IP}/32,2001:db8::/48
+          KEYCLOAK_BACKUP_INIT_SLEEP=30m
+          KEYCLOAK_BACKUP_INTERVAL=24h
+          KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS=7
+          KEYCLOAK_POSTGRES_BACKUPS_PATH=/srv/keycloak-postgres/backups
+          KEYCLOAK_POSTGRES_BACKUP_NAME=keycloak-postgres-backup
+          EOF
+
+      - name: Start up services using Docker Compose
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d --wait --wait-timeout 300
+
+      - name: Separate admin hostname - the public one serves realm company only, the admin one only the allowlist
+        run: ./tests/routing.sh --split
+
+      - name: One hostname with the allowlist - realm company for everyone, the rest for the allowlist
+        run: |
+          sed -i '/^KEYCLOAK_ADMIN_HOSTNAME=/d' .env
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d --wait --wait-timeout 300
+          ./tests/routing.sh --one-host
 
       - name: Show container logs on failure
         if: failure()

@@ -13,6 +13,7 @@
 - [Features](#features)
   - [Typical use cases](#typical-use-cases)
 - [Supply chain trust](#supply-chain-trust)
+- [Admin hostname, public realms and an allowlist](#admin-hostname-public-realms-and-an-allowlist)
 - [Production checklist](#production-checklist)
 - [Backups](#backups)
 - [Restoring a database backup](#restoring-a-database-backup)
@@ -90,9 +91,10 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak ps
 docker compose -p keycloak logs traefik | grep -i "adding certificate"
 # Expected: "Adding certificate for domain(s) keycloak.example.com"
 
-# Keycloak responds on its public URL:
-curl -fsS -o /dev/null -w "%{http_code}\n" "https://${KEYCLOAK_HOSTNAME}/health/ready"
-# Expected: 200
+# Keycloak responds on its public URL (its /health endpoints live on the
+# management port 9000, which Traefik never reaches):
+curl -fsS -o /dev/null -w "%{http_code}\n" "https://${KEYCLOAK_HOSTNAME}/realms/master/.well-known/openid-configuration"
+# Expected: 200 (with KEYCLOAK_PUBLIC_REALMS set, ask for one of those realms)
 
 # First backup lands in the volume after KEYCLOAK_BACKUP_INIT_SLEEP (default 30m):
 docker compose -p keycloak logs backups | tail -3
@@ -117,6 +119,7 @@ docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak up
 - **Keycloak** latest stable (26.8.2) with PostgreSQL 16 backing store.
 - **Traefik v3** reverse proxy with automatic HTTP→HTTPS redirect at entry-point level and Let's Encrypt TLS-ALPN challenge for cert issuance.
 - **Basic-auth protected Traefik dashboard** on a separate hostname.
+- **Optional admin isolation**: a separate hostname for the Admin Console and the `master` realm, the realms the public hostname serves, and a source-address allowlist for the rest. Unset, nothing changes.
 - **Prometheus metrics** exposed by Traefik (`‑‑metrics.prometheus`). Wire your own scraper.
 - **Healthchecks** on every service (Postgres `pg_isready`, Keycloak `/health/ready`, Traefik `/ping`) with service-dependency ordering (`depends_on: condition: service_healthy`).
 - **Scheduled PostgreSQL backups** with configurable interval, retention, and destination path.
@@ -167,6 +170,36 @@ slsa-verifier verify-artifact keycloak-traefik-letsencrypt-docker-compose-<tag>.
 
 The identity is exact: this repository's `release-assets.yml`, on the tag you deploy. A signature from any other workflow, or from this one on another ref, fails the check. A release published after 24 September 2026 is signed by the run that published it, so the commands above take it as they are. The five releases before that date were signed by a run started by hand on `main`: for those, end the identity in `@refs/heads/main` and give slsa-verifier `--source-branch main` instead of `--source-tag <tag>`. The archive is still the tag's tree. The workflow that makes them is [`release-assets.yml`](.github/workflows/release-assets.yml).
 
+## Admin hostname, public realms and an allowlist
+
+Keycloak's [reverse-proxy guide](https://www.keycloak.org/server/reverseproxy#_exposed_path_recommendations) asks that applications see only what they need: `/realms/`, `/resources/` and `/.well-known/`. The Admin Console, the Admin REST API and the `master` realm stay internal. Three optional settings in `.env` do that here. Left unset, as on every deployment before 1.9.0, Keycloak answers every path on `KEYCLOAK_HOSTNAME` from every source, as before.
+
+| Setting | What it does | Unset |
+|---|---|---|
+| `KEYCLOAK_ADMIN_HOSTNAME` | A second hostname for the Admin Console, the Admin REST API and the `master` realm (Keycloak's [`hostname-admin`](https://www.keycloak.org/server/hostname#_exposing_the_administration_console_on_a_separate_hostname)). `KEYCLOAK_HOSTNAME` then serves realms and their resources only. | Everything on `KEYCLOAK_HOSTNAME` |
+| `KEYCLOAK_PUBLIC_REALMS` | The realms `KEYCLOAK_HOSTNAME` serves to everyone, as a regular-expression alternative: `company`, or `company\|customer`. A name ends at a slash, so `company` never matches `company-test`. | Every realm, `master` too |
+| `KEYCLOAK_ADMIN_ALLOWED_IPS` | Source addresses or ranges, comma-separated, allowed on everything else: the admin hostname, or without one every path of `KEYCLOAK_HOSTNAME` outside the public realms. Other sources get 403. | Every IPv4 and IPv6 source |
+
+CI runs both setups below on every push with `tests/routing.sh`, and the default one too.
+
+**One hostname, the admin side by source address.** `KEYCLOAK_PUBLIC_REALMS=company` and `KEYCLOAK_ADMIN_ALLOWED_IPS=198.51.100.0/24`: realm `company` answers everyone, while the Admin Console, the Admin REST API, `master` and every other realm answer only the allowlist. Nothing else to do.
+
+**A separate admin hostname.** Add `KEYCLOAK_ADMIN_HOSTNAME=keycloak-admin.example.com` with its own DNS record; Traefik gets its certificate the same way. Then one step inside Keycloak, and it is required: set the `master` realm's frontend URL to the admin hostname. Keycloak builds the `master` sign-in form from `KEYCLOAK_HOSTNAME`, so the form the Admin Console shows on the admin hostname posts to the public one. The browser does not send the admin hostname's cookies there, so the sign-in fails: Keycloak answers "Restart login cookie not found", or, once `KEYCLOAK_PUBLIC_REALMS` leaves `master` out, Traefik answers 404. After `docker compose up -d`, on the server:
+
+```bash
+docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak exec keycloak \
+  /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user YOUR_ADMIN_USER
+docker compose -f keycloak-traefik-letsencrypt-docker-compose.yml -p keycloak exec keycloak \
+  /opt/keycloak/bin/kcadm.sh update realms/master -s attributes.frontendUrl=https://keycloak-admin.example.com
+```
+
+The first command asks for the password. The Admin Console is then at `https://keycloak-admin.example.com/admin/`, and `master` tokens carry the issuer `https://keycloak-admin.example.com/realms/master`: an application that signs in through `master` has to move to a realm of its own first, which Keycloak recommends anyway. To go back, clear the frontend URL first (`-s attributes.frontendUrl=`), then unset `KEYCLOAK_ADMIN_HOSTNAME`.
+
+- Traefik checks the address a connection comes from. Behind a CDN or another proxy that is the proxy's address, and the allowlist needs Traefik's `ipStrategy` instead.
+- Two Traefik routers share the Keycloak service: `keycloak`, with the allowlist (the `keycloak-admin-allowlist` middleware), and `keycloak-public`. With nothing set `keycloak` serves every path, as before, so a middleware an override of yours attaches to it still covers everything. Once a public realm or an allowlist is set, `keycloak-public` serves the realm paths and your middleware no longer covers them; an override that sets the `keycloak` router's middlewares must keep `keycloak-admin-allowlist` in its list.
+- `/health` and `/metrics` stay off both hostnames: Keycloak serves them on its management port, which Traefik never reaches. `/lb-check` is not routed; it exists only with Keycloak's `stateless` or `multi-site` features, which this stack does not turn on.
+- Keycloak's own [issue #10655](https://github.com/keycloak/keycloak/issues/10655), still open, reports that impersonating a user from an Admin Console on a separate hostname does not carry over to the realm's hostname.
+
 ## Production checklist
 
 Before exposing this to real users, check every box:
@@ -175,6 +208,7 @@ Before exposing this to real users, check every box:
 - [ ] **Strong secrets everywhere.** `KEYCLOAK_DB_PASSWORD` and `KEYCLOAK_ADMIN_PASSWORD` must be at least 24 random characters. Generate with `openssl rand -base64 24 | tr -d '/+=' | head -c 32`. Traefik dashboard BCrypt hash must be regenerated per deployment.
 - [ ] **Host-mount the backups volume.** By default the `backups` service writes to a named docker volume. For disaster recovery, bind-mount it to a host path that's included in your off-host backup solution: `- /srv/keycloak-postgres/backups:/srv/keycloak-postgres/backups`.
 - [ ] **Verify Let's Encrypt cert issuance.** Watch Traefik logs during first start: `docker compose -p keycloak logs traefik -f`. A successful TLS-ALPN challenge logs `Adding certificate for domain(s) ${KEYCLOAK_HOSTNAME}` within ~30 seconds.
+- [ ] **Keep the admin side internal.** Set `KEYCLOAK_PUBLIC_REALMS` to the realms your applications use and `KEYCLOAK_ADMIN_ALLOWED_IPS` to where your administrators connect from, with or without a separate admin hostname. See [Admin hostname, public realms and an allowlist](#admin-hostname-public-realms-and-an-allowlist).
 - [ ] **Lock down the Traefik dashboard.** The dashboard is basic-auth protected by default, but basic auth is basic. Consider restricting the dashboard's router to specific source IPs via Traefik's `IPAllowList` middleware, or skip exposing it publicly and rely on `docker compose logs`.
 - [ ] **Plan your upgrade path.** Keycloak does not guarantee DB-schema compatibility across major versions. Before bumping `KEYCLOAK_IMAGE_TAG` from 26.x to 27.x (when released), read Keycloak's migration guide, test the bump on a staging database restored from a recent backup.
 - [ ] **Know the restore procedure.** Run `./keycloak-restore-database.sh` against a test environment before you need it in production. Document the `BACKUP_PATH` and restore steps alongside your other DR runbooks.
@@ -278,6 +312,8 @@ The [Deployment Verification](https://github.com/heyvaldemar/keycloak-traefik-le
 5. **Backup failure detected**: stopping postgres forces a failed cycle; a `*.failed` file and `Backup FAILED` log line are produced.
 6. **Restore roundtrip**: inserting a marker row, restoring an earlier backup, and asserting the marker is gone proves the backup is restorable (not a no-op).
 7. **Prune removes old**: a fake file with 14-day-old mtime is deleted on the next prune cycle; recent backups are preserved.
+
+`tests/routing.sh` asks Traefik which requests reach Keycloak, by hostname, path and source address, from throwaway curl containers with known addresses. The deploy job runs it with nothing set: the Admin Console, discovery and the console's own sign-in on `KEYCLOAK_HOSTNAME`. The `split-routing` job runs it with a separate admin hostname, realm `company` public and an allowlist, then again on one hostname with the allowlist: what the public side serves and refuses (`master`, other realms, `company-test`, `/admin/`), 403 on the admin side from outside the allowlist, and the Admin Console sign-in from inside it, which first proves that it fails until the `master` frontend URL is set.
 
 Run the same tests locally:
 
