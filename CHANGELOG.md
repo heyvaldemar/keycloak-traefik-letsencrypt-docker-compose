@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.9.0] - 2026-11-22
+
 ### Added
 
 - **Optional admin isolation, as Keycloak's reverse-proxy guide recommends:**
