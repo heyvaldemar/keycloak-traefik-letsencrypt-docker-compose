@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- **`KEYCLOAK_ADMIN_HOSTNAME`, `KEYCLOAK_PUBLIC_REALMS` and `KEYCLOAK_ADMIN_ALLOWED_IPS` are declared in `.env.example`, empty.** v1.9.0 listed them only as commented examples, and fleet conformance reads a `${VAR:+...}` with no default as a variable the file you copy must declare. Empty already meant what these variables meant before they existed, so nothing changes for a deployment: the compose file renders the same with and without the three lines. The comment above each one says what empty means and gives an example value.
 
 ## [1.9.0] - 2026-11-22
 
